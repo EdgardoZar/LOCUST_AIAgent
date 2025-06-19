@@ -2,24 +2,11 @@ pipeline {
     agent any
     
     parameters {
-        // Script generation parameters
+        // Script generation parameters (only what's needed)
         string(name: 'SCENARIO_NAME', defaultValue: '', description: 'Name of the test scenario')
         text(name: 'SCENARIO_JSON', defaultValue: '', description: 'JSON configuration for the scenario')
         string(name: 'TARGET_HOST', defaultValue: 'https://api.example.com', description: 'Target host URL for testing')
-        string(name: 'API_TOKEN', defaultValue: '', description: 'API token for authentication (optional)')
         choice(name: 'ENVIRONMENT', choices: ['dev', 'staging', 'prod'], description: 'Target environment')
-        
-        // Test configuration (for script generation)
-        string(name: 'USERS', defaultValue: '10', description: 'Number of concurrent users')
-        string(name: 'SPAWN_RATE', defaultValue: '2', description: 'User spawn rate per second')
-        string(name: 'RUN_TIME', defaultValue: '5m', description: 'Test duration (e.g., 5m, 10m, 1h)')
-        string(name: 'MIN_WAIT', defaultValue: '1000', description: 'Minimum wait time between requests (ms)')
-        string(name: 'MAX_WAIT', defaultValue: '5000', description: 'Maximum wait time between requests (ms)')
-        
-        // Advanced options
-        booleanParam(name: 'GENERATE_HTML_REPORT', defaultValue: true, description: 'Generate HTML test report')
-        booleanParam(name: 'GENERATE_CSV_REPORT', defaultValue: true, description: 'Generate CSV test report')
-        string(name: 'LOG_LEVEL', defaultValue: 'INFO', description: 'Logging level (DEBUG, INFO, WARNING, ERROR)')
         
         // Git configuration
         string(name: 'GIT_COMMIT_MESSAGE', defaultValue: '', description: 'Custom commit message (optional)')
@@ -29,13 +16,11 @@ pipeline {
         // Python and workspace configuration
         PYTHON_VERSION = "${env.PYTHON_VERSION ?: '3.9'}"
         WORKSPACE_DIR = "${WORKSPACE}\\test_workspace"
-        REPORTS_DIR = "${WORKSPACE}\\test_reports"
         SCRIPTS_DIR = "${WORKSPACE}\\generated_scripts"
         TIMESTAMP = "${new Date().format('yyyyMMdd_HHmmss')}"
         
         // Git configuration
         GIT_SCRIPTS_BRANCH = "${env.GIT_SCRIPTS_BRANCH ?: 'generated-scripts'}"
-        GIT_SCRIPTS_FOLDER = 'test_workspace/generated_scripts'
         GIT_EMAIL = "${env.JENKINS_GIT_EMAIL ?: 'jenkins@example.com'}"
         GIT_USER = "${env.JENKINS_GIT_USER ?: 'Jenkins Pipeline'}"
         
@@ -97,7 +82,6 @@ pipeline {
                     
                     // Create directories
                     bat "if not exist \"${WORKSPACE_DIR}\" mkdir \"${WORKSPACE_DIR}\""
-                    bat "if not exist \"${REPORTS_DIR}\" mkdir \"${REPORTS_DIR}\""
                     bat "if not exist \"${SCRIPTS_DIR}\" mkdir \"${SCRIPTS_DIR}\""
                     
                     // Setup Python virtual environment
@@ -153,11 +137,11 @@ pipeline {
                     def testConfigJson = groovy.json.JsonOutput.toJson([
                         scenario_name: params.SCENARIO_NAME,
                         host: params.TARGET_HOST,
-                        users: params.USERS,
-                        spawn_rate: params.SPAWN_RATE,
-                        run_time: params.RUN_TIME,
-                        min_wait: params.MIN_WAIT,
-                        max_wait: params.MAX_WAIT,
+                        users: 10,  // Default value
+                        spawn_rate: 2,  // Default value
+                        run_time: "5m",  // Default value
+                        min_wait: 1000,  // Default value
+                        max_wait: 5000,  // Default value
                         assertions: [
                             [type: "status_code", value: 200]
                         ],
@@ -168,10 +152,10 @@ pipeline {
                         ],
                         params: [:],
                         body: [:],
-                        output_dir: REPORTS_DIR,
-                        generate_csv: params.GENERATE_CSV_REPORT,
-                        generate_html: params.GENERATE_HTML_REPORT,
-                        log_level: params.LOG_LEVEL
+                        output_dir: "test_reports",  // Default value
+                        generate_csv: true,  // Default value
+                        generate_html: true,  // Default value
+                        log_level: "INFO"  // Default value
                     ])
                     
                     writeFile file: "${WORKSPACE_DIR}\\test_config.json", text: testConfigJson
@@ -319,6 +303,51 @@ except Exception as e:
                 }
             }
         }
+        
+        stage('Commit to Git') {
+            steps {
+                script {
+                    echo "Committing generated script to Git repository..."
+                    echo "Branch: ${GIT_SCRIPTS_BRANCH}"
+                    echo "Script: ${env.GENERATED_SCRIPT}"
+                    
+                    // Configure Git
+                    bat """
+                        git config user.email "${GIT_EMAIL}"
+                        git config user.name "${GIT_USER}"
+                    """
+                    
+                    // Create scripts branch if it doesn't exist
+                    bat """
+                        git checkout -b ${GIT_SCRIPTS_BRANCH} 2>nul || git checkout ${GIT_SCRIPTS_BRANCH}
+                    """
+                    
+                    // Copy generated script to a permanent location in the repository
+                    bat """
+                        if not exist "generated_scripts" mkdir "generated_scripts"
+                        copy "${env.GENERATED_SCRIPT}" "generated_scripts\\"
+                    """
+                    
+                    // Add and commit the script
+                    def commitMessage = params.GIT_COMMIT_MESSAGE ?: "Generated script: ${params.SCENARIO_NAME} - ${TIMESTAMP} - ${BUILD_INFO}"
+                    bat """
+                        git add generated_scripts\\*.py
+                        git commit -m "${commitMessage}" || echo "No changes to commit"
+                    """
+                    
+                    // Push to remote
+                    bat """
+                        git push origin ${GIT_SCRIPTS_BRANCH} || echo "Push failed or no changes"
+                    """
+                    
+                    // Return to main branch
+                    bat "git checkout main"
+                    
+                    echo "Script committed to Git branch: ${GIT_SCRIPTS_BRANCH}"
+                    echo "Commit message: ${commitMessage}"
+                }
+            }
+        }
     }
     
     post {
@@ -339,7 +368,8 @@ except Exception as e:
         success {
             echo "✅ Script generated successfully!"
             echo "📁 Script: ${env.GENERATED_SCRIPT}"
-            echo "📦 Script archived and ready for use"
+            echo "📦 Script archived and ready for download"
+            echo "🌿 Script committed to Git branch: ${GIT_SCRIPTS_BRANCH}"
             echo "🔗 You can now use this script in the Test Execution Pipeline"
         }
         
