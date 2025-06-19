@@ -160,7 +160,16 @@ pipeline {
 import sys
 import json
 import os
-sys.path.insert(0, "${WORKSPACE}")
+
+# Get paths from command line arguments
+if len(sys.argv) < 3:
+    print("Usage: python script.py <workspace> <workspace_dir>")
+    sys.exit(1)
+
+workspace = sys.argv[1]
+workspace_dir = sys.argv[2]
+
+sys.path.insert(0, workspace)
 
 try:
     # Try to import the module
@@ -168,16 +177,16 @@ try:
         from Locust_AI_Agent.core.test_agent import LocustTestAgent, TestConfig
     except ImportError:
         # Fallback: try relative import
-        sys.path.insert(0, os.path.join("${WORKSPACE}", "core"))
+        sys.path.insert(0, os.path.join(workspace, "core"))
         from test_agent import LocustTestAgent, TestConfig
     
     # Load and validate scenario configuration
-    scenario_file = os.path.join("${WORKSPACE_DIR}", "scenario_config.json")
+    scenario_file = os.path.join(workspace_dir, "scenario_config.json")
     with open(scenario_file, "r") as f:
         scenario_config = json.load(f)
     
     # Load test configuration
-    test_config_file = os.path.join("${WORKSPACE_DIR}", "test_config.json")
+    test_config_file = os.path.join(workspace_dir, "test_config.json")
     with open(test_config_file, "r") as f:
         test_config_data = json.load(f)
     
@@ -195,7 +204,7 @@ try:
     print(f"Description: {description}")
     
     test_config = TestConfig(**test_config_data)
-    agent = LocustTestAgent(workspace_dir="${WORKSPACE_DIR}")
+    agent = LocustTestAgent(workspace_dir=workspace_dir)
     script_path = agent.generate_script(scenario_config, test_config)
     
     print(f"Script generated successfully: {script_path}")
@@ -208,7 +217,7 @@ try:
         "success": True
     }
     
-    metadata_file = os.path.join("${WORKSPACE_DIR}", "generation_metadata.json")
+    metadata_file = os.path.join(workspace_dir, "generation_metadata.json")
     with open(metadata_file, "w") as f:
         json.dump(metadata, f, indent=2)
         
@@ -218,7 +227,7 @@ except Exception as e:
         "success": False,
         "error": str(e)
     }
-    metadata_file = os.path.join("${WORKSPACE_DIR}", "generation_metadata.json")
+    metadata_file = os.path.join(workspace_dir, "generation_metadata.json")
     with open(metadata_file, "w") as f:
         json.dump(metadata, f, indent=2)
     sys.exit(1)
@@ -232,12 +241,12 @@ except Exception as e:
                         pip install -e .
                     """
                     
-                    // Run the Python script
+                    // Run the Python script with command line arguments
                     bat """
                         call venv\\Scripts\\activate.bat
                         cd ${WORKSPACE}
                         set PYTHONPATH=%PYTHONPATH%;${WORKSPACE}
-                        python ${WORKSPACE_DIR}\\generate_script.py
+                        python ${WORKSPACE_DIR}\\generate_script.py "${WORKSPACE}" "${WORKSPACE_DIR}"
                     """
                     
                     // Read generation metadata
