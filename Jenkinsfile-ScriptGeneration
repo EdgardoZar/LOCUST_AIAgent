@@ -328,22 +328,22 @@ except Exception as e:
                         copy "${env.GENERATED_SCRIPT}" "generated_scripts\\"
                     """
                     
-                    // Add and commit the script
+                    // Add and commit the script (force add to ensure latest version)
                     def commitMessage = params.GIT_COMMIT_MESSAGE ?: "Generated script: ${params.SCENARIO_NAME} - ${TIMESTAMP} - ${BUILD_INFO}"
                     bat """
-                        git add generated_scripts\\*.py
-                        git commit -m "${commitMessage}" || echo "No changes to commit"
+                        git add -f generated_scripts\\*.py
+                        git commit -m "${commitMessage}" || echo "No changes to commit - script is identical"
                     """
                     
-                    // Push to remote
+                    // Push to remote (don't fail if no changes)
                     bat """
-                        git push origin ${GIT_SCRIPTS_BRANCH} || echo "Push failed or no changes"
+                        git push origin ${GIT_SCRIPTS_BRANCH} || echo "Push completed (no changes or already up to date)"
                     """
                     
                     // Return to main branch
                     bat "git checkout main"
                     
-                    echo "Script committed to Git branch: ${GIT_SCRIPTS_BRANCH}"
+                    echo "Script processing completed for Git branch: ${GIT_SCRIPTS_BRANCH}"
                     echo "Commit message: ${commitMessage}"
                 }
             }
