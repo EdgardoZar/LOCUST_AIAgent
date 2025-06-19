@@ -20,33 +20,60 @@ pipeline {
         booleanParam(name: 'GENERATE_HTML_REPORT', defaultValue: true, description: 'Generate HTML test report')
         booleanParam(name: 'GENERATE_CSV_REPORT', defaultValue: true, description: 'Generate CSV test report')
         string(name: 'LOG_LEVEL', defaultValue: 'INFO', description: 'Logging level (DEBUG, INFO, WARNING, ERROR)')
+        
+        // Git configuration
+        string(name: 'GIT_COMMIT_MESSAGE', defaultValue: '', description: 'Custom commit message (optional)')
     }
     
     environment {
-        PYTHON_VERSION = '3.9'
+        // Python and workspace configuration
+        PYTHON_VERSION = "${env.PYTHON_VERSION ?: '3.9'}"
         WORKSPACE_DIR = "${WORKSPACE}\\test_workspace"
         REPORTS_DIR = "${WORKSPACE}\\test_reports"
         SCRIPTS_DIR = "${WORKSPACE}\\generated_scripts"
         TIMESTAMP = "${new Date().format('yyyyMMdd_HHmmss')}"
         
         // Git configuration
-        GIT_SCRIPTS_BRANCH = 'generated-scripts'
+        GIT_SCRIPTS_BRANCH = "${env.GIT_SCRIPTS_BRANCH ?: 'generated-scripts'}"
         GIT_SCRIPTS_FOLDER = 'test_workspace/generated_scripts'
+        GIT_EMAIL = "${env.JENKINS_GIT_EMAIL ?: 'jenkins@example.com'}"
+        GIT_USER = "${env.JENKINS_GIT_USER ?: 'Jenkins Pipeline'}"
+        
+        // Build information
+        BUILD_INFO = "Build #${env.BUILD_NUMBER} - ${env.BUILD_ID}"
+        JOB_NAME = "${env.JOB_NAME}"
+        BUILD_URL = "${env.BUILD_URL}"
+        
+        // Environment-specific settings
+        ENV_SUFFIX = "${params.ENVIRONMENT == 'prod' ? '' : '_' + params.ENVIRONMENT}"
     }
     
     stages {
         stage('Checkout') {
             steps {
                 checkout scm
-                echo "Checked out code from ${env.BRANCH_NAME}"
-                echo "Script Generation Pipeline"
-                echo "Scenario Name: ${params.SCENARIO_NAME}"
+                script {
+                    echo "=== Script Generation Pipeline ==="
+                    echo "Build Number: ${env.BUILD_NUMBER}"
+                    echo "Job Name: ${env.JOB_NAME}"
+                    echo "Workspace: ${WORKSPACE}"
+                    echo "Branch: ${env.BRANCH_NAME}"
+                    echo "Scenario Name: ${params.SCENARIO_NAME}"
+                    echo "Environment: ${params.ENVIRONMENT}"
+                    echo "Target Host: ${params.TARGET_HOST}"
+                }
             }
         }
         
         stage('Setup Environment') {
             steps {
                 script {
+                    echo "Setting up environment..."
+                    echo "Python Version: ${PYTHON_VERSION}"
+                    echo "Scripts Branch: ${GIT_SCRIPTS_BRANCH}"
+                    echo "Git User: ${GIT_USER}"
+                    echo "Git Email: ${GIT_EMAIL}"
+                    
                     // Create directories
                     bat "if not exist \"${WORKSPACE_DIR}\" mkdir \"${WORKSPACE_DIR}\""
                     bat "if not exist \"${REPORTS_DIR}\" mkdir \"${REPORTS_DIR}\""
@@ -69,6 +96,8 @@ pipeline {
         stage('Validate Input') {
             steps {
                 script {
+                    echo "Validating input parameters..."
+                    
                     if (!params.SCENARIO_NAME?.trim()) {
                         error "SCENARIO_NAME is required"
                     }
@@ -82,6 +111,11 @@ pipeline {
                         echo "JSON validation successful"
                         echo "Scenario name: ${scenarioConfig.name}"
                         echo "Steps count: ${scenarioConfig.steps?.size() ?: 0}"
+                        
+                        // Store scenario info in environment
+                        env.SCENARIO_STEPS_COUNT = scenarioConfig.steps?.size() ?: 0
+                        env.SCENARIO_DESCRIPTION = scenarioConfig.description ?: "No description provided"
+                        
                     } catch (Exception e) {
                         error "Invalid JSON format: ${e.message}"
                     }
@@ -93,13 +127,15 @@ pipeline {
             steps {
                 script {
                     echo "Generating script from scenario configuration..."
+                    echo "Environment: ${params.ENVIRONMENT}"
+                    echo "Target Host: ${params.TARGET_HOST}"
                     
                     // Parse scenario JSON
                     def scenarioConfig = new groovy.json.JsonSlurper().parseText(params.SCENARIO_JSON)
                     
                     // Create test configuration
                     def testConfig = [
-                        scenario_name: params.SCENARIO_NAME,
+                        scenario_name: params.SCENARIO_NAME + ENV_SUFFIX,
                         host: params.TARGET_HOST,
                         users: params.USERS,
                         spawn_rate: params.SPAWN_RATE,
@@ -154,6 +190,13 @@ print(f'Script generated: {script_path}')
 "
                     """
                     
+                    // Store script path in environment
+                    def scriptFiles = bat(script: "dir ${SCRIPTS_DIR}\\*.py /b", returnStdout: true).trim()
+                    if (scriptFiles) {
+                        env.GENERATED_SCRIPT = scriptFiles.split('\n').last()
+                        echo "Generated script: ${env.GENERATED_SCRIPT}"
+                    }
+                    
                     echo "Script generation completed successfully!"
                 }
             }
@@ -163,11 +206,13 @@ print(f'Script generated: {script_path}')
             steps {
                 script {
                     echo "Saving generated script to Git..."
+                    echo "Branch: ${GIT_SCRIPTS_BRANCH}"
+                    echo "Script: ${env.GENERATED_SCRIPT}"
                     
                     // Configure Git
                     bat """
-                        git config user.email "jenkins@example.com"
-                        git config user.name "Jenkins Pipeline"
+                        git config user.email "${GIT_EMAIL}"
+                        git config user.name "${GIT_USER}"
                     """
                     
                     // Create scripts branch if it doesn't exist
@@ -176,9 +221,10 @@ print(f'Script generated: {script_path}')
                     """
                     
                     // Add generated script
+                    def commitMessage = params.GIT_COMMIT_MESSAGE ?: "Generated script: ${params.SCENARIO_NAME} - ${TIMESTAMP} - ${BUILD_INFO}"
                     bat """
                         git add ${SCRIPTS_DIR}\\*.py
-                        git commit -m "Generated script: ${params.SCENARIO_NAME} - ${TIMESTAMP}" || echo "No changes to commit"
+                        git commit -m "${commitMessage}" || echo "No changes to commit"
                     """
                     
                     // Push to remote
@@ -190,6 +236,7 @@ print(f'Script generated: {script_path}')
                     bat "git checkout main"
                     
                     echo "Script saved to Git branch: ${GIT_SCRIPTS_BRANCH}"
+                    echo "Commit message: ${commitMessage}"
                 }
             }
         }
@@ -199,7 +246,7 @@ print(f'Script generated: {script_path}')
                 script {
                     // Archive the generated script
                     archiveArtifacts artifacts: "${SCRIPTS_DIR}\\*.py", fingerprint: true
-                    echo "Script archived successfully"
+                    echo "Script archived successfully: ${env.GENERATED_SCRIPT}"
                 }
             }
         }
@@ -208,19 +255,33 @@ print(f'Script generated: {script_path}')
     post {
         always {
             script {
-                echo "Script Generation Pipeline completed with result: ${currentBuild.result}"
+                echo "=== Script Generation Pipeline Summary ==="
+                echo "Build Number: ${env.BUILD_NUMBER}"
+                echo "Job Name: ${env.JOB_NAME}"
+                echo "Result: ${currentBuild.result}"
                 echo "Build URL: ${env.BUILD_URL}"
-                echo "Generated script saved to Git branch: ${GIT_SCRIPTS_BRANCH}"
+                echo "Generated Script: ${env.GENERATED_SCRIPT}"
+                echo "Scripts Branch: ${GIT_SCRIPTS_BRANCH}"
+                echo "Environment: ${params.ENVIRONMENT}"
+                echo "Scenario Steps: ${env.SCENARIO_STEPS_COUNT}"
             }
         }
         
         success {
-            echo "Script generated and saved to Git successfully!"
-            echo "You can now use this script in the Test Execution Pipeline"
+            echo "✅ Script generated and saved to Git successfully!"
+            echo "📁 Script: ${env.GENERATED_SCRIPT}"
+            echo "🌿 Branch: ${GIT_SCRIPTS_BRANCH}"
+            echo "🔗 You can now use this script in the Test Execution Pipeline"
         }
         
         failure {
-            echo "Script generation failed! Check the console output for error details."
+            echo "❌ Script generation failed!"
+            echo "📋 Check the console output for error details"
+            echo "🔧 Verify your JSON format and parameters"
+        }
+        
+        unstable {
+            echo "⚠️ Script generation completed with warnings"
         }
     }
 } 

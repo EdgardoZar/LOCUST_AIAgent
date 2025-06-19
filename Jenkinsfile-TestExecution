@@ -25,31 +25,67 @@ pipeline {
         string(name: 'MAX_AVG_RESPONSE_TIME', defaultValue: '2000', description: 'Maximum average response time (ms)')
         string(name: 'MIN_SUCCESS_RATE', defaultValue: '95', description: 'Minimum success rate percentage')
         string(name: 'MIN_REQUESTS_PER_SEC', defaultValue: '10', description: 'Minimum requests per second')
+        
+        // Test metadata
+        string(name: 'TEST_DESCRIPTION', defaultValue: '', description: 'Description of this test run (optional)')
+        string(name: 'TEST_TAGS', defaultValue: '', description: 'Tags for this test run (optional)')
     }
     
     environment {
-        PYTHON_VERSION = '3.9'
+        // Python and workspace configuration
+        PYTHON_VERSION = "${env.PYTHON_VERSION ?: '3.9'}"
         WORKSPACE_DIR = "${WORKSPACE}\\test_workspace"
         REPORTS_DIR = "${WORKSPACE}\\test_reports"
         SCRIPTS_DIR = "${WORKSPACE}\\generated_scripts"
         TIMESTAMP = "${new Date().format('yyyyMMdd_HHmmss')}"
         
         // Git configuration
-        GIT_SCRIPTS_BRANCH = 'generated-scripts'
+        GIT_SCRIPTS_BRANCH = "${env.GIT_SCRIPTS_BRANCH ?: 'generated-scripts'}"
+        
+        // Build information
+        BUILD_INFO = "Build #${env.BUILD_NUMBER} - ${env.BUILD_ID}"
+        JOB_NAME = "${env.JOB_NAME}"
+        BUILD_URL = "${env.BUILD_URL}"
+        
+        // Test execution settings
+        TEST_RUN_ID = "${env.BUILD_NUMBER}_${TIMESTAMP}"
+        TEST_ENVIRONMENT = "${params.ENVIRONMENT}"
+        
+        // Performance thresholds (convert to integers)
+        MAX_RESPONSE_TIME_MS = "${params.MAX_AVG_RESPONSE_TIME}"
+        MIN_SUCCESS_RATE_PCT = "${params.MIN_SUCCESS_RATE}"
+        MIN_REQUESTS_PER_SEC = "${params.MIN_REQUESTS_PER_SEC}"
     }
     
     stages {
         stage('Checkout') {
             steps {
                 checkout scm
-                echo "Checked out code from ${env.BRANCH_NAME}"
-                echo "Test Execution Pipeline"
+                script {
+                    echo "=== Test Execution Pipeline ==="
+                    echo "Build Number: ${env.BUILD_NUMBER}"
+                    echo "Job Name: ${env.JOB_NAME}"
+                    echo "Workspace: ${WORKSPACE}"
+                    echo "Branch: ${env.BRANCH_NAME}"
+                    echo "Test Run ID: ${TEST_RUN_ID}"
+                    echo "Environment: ${TEST_ENVIRONMENT}"
+                    echo "Target Host: ${params.TARGET_HOST}"
+                }
             }
         }
         
         stage('Setup Environment') {
             steps {
                 script {
+                    echo "Setting up test environment..."
+                    echo "Python Version: ${PYTHON_VERSION}"
+                    echo "Scripts Branch: ${GIT_SCRIPTS_BRANCH}"
+                    echo "Test Run ID: ${TEST_RUN_ID}"
+                    echo "Performance Thresholds:"
+                    echo "  Max Response Time: ${MAX_RESPONSE_TIME_MS}ms"
+                    echo "  Min Success Rate: ${MIN_SUCCESS_RATE_PCT}%"
+                    echo "  Min Requests/sec: ${MIN_REQUESTS_PER_SEC}"
+                    
                     // Create directories
                     bat "if not exist \"${WORKSPACE_DIR}\" mkdir \"${WORKSPACE_DIR}\""
                     bat "if not exist \"${REPORTS_DIR}\" mkdir \"${REPORTS_DIR}\""
@@ -73,6 +109,7 @@ pipeline {
             steps {
                 script {
                     echo "Fetching available scripts from Git..."
+                    echo "Branch: ${GIT_SCRIPTS_BRANCH}"
                     
                     // Fetch scripts branch
                     bat """
@@ -88,6 +125,10 @@ pipeline {
                             echo "  - ${script}"
                         }
                         
+                        // Store available scripts in environment
+                        env.AVAILABLE_SCRIPTS = scriptFiles
+                        env.SCRIPTS_COUNT = scriptFiles.split('\n').size()
+                        
                         // If no script selected, use the first one
                         if (!params.SELECTED_SCRIPT) {
                             def firstScript = scriptFiles.split('\n')[0]
@@ -102,6 +143,9 @@ pipeline {
                     
                     // Return to main branch
                     bat "git checkout main"
+                    
+                    echo "Selected script: ${env.SELECTED_SCRIPT}"
+                    echo "Total scripts available: ${env.SCRIPTS_COUNT}"
                 }
             }
         }
@@ -117,7 +161,13 @@ pipeline {
                         error "Script ${env.SELECTED_SCRIPT} not found. Please check the script name."
                     }
                     
+                    // Store script info in environment
+                    env.SCRIPT_NAME = env.SELECTED_SCRIPT.replace('.py', '')
+                    env.SCRIPT_PATH = "${SCRIPTS_DIR}\\${env.SELECTED_SCRIPT}"
+                    
                     echo "Script validation successful"
+                    echo "Script Name: ${env.SCRIPT_NAME}"
+                    echo "Script Path: ${env.SCRIPT_PATH}"
                 }
             }
         }
@@ -126,10 +176,15 @@ pipeline {
             steps {
                 script {
                     echo "Running test with script: ${env.SELECTED_SCRIPT}"
+                    echo "Test Run ID: ${TEST_RUN_ID}"
+                    echo "Environment: ${TEST_ENVIRONMENT}"
+                    echo "Target Host: ${params.TARGET_HOST}"
+                    echo "Users: ${params.USERS}"
+                    echo "Run Time: ${params.RUN_TIME}"
                     
                     // Create test configuration
                     def testConfig = [
-                        scenario_name: env.SELECTED_SCRIPT.replace('.py', ''),
+                        scenario_name: env.SCRIPT_NAME,
                         host: params.TARGET_HOST,
                         users: params.USERS,
                         spawn_rate: params.SPAWN_RATE,
@@ -192,6 +247,14 @@ workflow_result = {
     'script_path': result.script_path,
     'html_report_path': result.html_report_path,
     'csv_report_path': result.csv_report_path,
+    'test_metadata': {
+        'test_run_id': '${TEST_RUN_ID}',
+        'environment': '${TEST_ENVIRONMENT}',
+        'build_number': '${env.BUILD_NUMBER}',
+        'job_name': '${env.JOB_NAME}',
+        'description': '${params.TEST_DESCRIPTION}',
+        'tags': '${params.TEST_TAGS}'
+    },
     'test_result': {
         'execution_time': result.execution_time,
         'total_requests': result.total_requests,
@@ -207,6 +270,24 @@ with open('${WORKSPACE_DIR}\\test_results.json', 'w') as f:
 print(f'Test completed: Success={result.success}')
 "
                     """
+                    
+                    // Store test results in environment
+                    def resultsText = readFile file: "${WORKSPACE_DIR}\\test_results.json"
+                    def results = new groovy.json.JsonSlurper().parseText(resultsText)
+                    
+                    env.TEST_SUCCESS = results.workflow_success
+                    env.TOTAL_REQUESTS = results.test_result.total_requests
+                    env.FAILED_REQUESTS = results.test_result.failed_requests
+                    env.AVG_RESPONSE_TIME = results.test_result.avg_response_time
+                    env.REQUESTS_PER_SEC = results.test_result.requests_per_sec
+                    env.EXECUTION_TIME = results.test_result.execution_time
+                    
+                    echo "Test execution completed"
+                    echo "Success: ${env.TEST_SUCCESS}"
+                    echo "Total Requests: ${env.TOTAL_REQUESTS}"
+                    echo "Failed Requests: ${env.FAILED_REQUESTS}"
+                    echo "Avg Response Time: ${env.AVG_RESPONSE_TIME}ms"
+                    echo "Requests/sec: ${env.REQUESTS_PER_SEC}"
                 }
             }
         }
@@ -218,6 +299,7 @@ print(f'Test completed: Success={result.success}')
             steps {
                 script {
                     echo "Running LLM analysis..."
+                    echo "Test Run ID: ${TEST_RUN_ID}"
                     
                     withCredentials([string(credentialsId: 'openai-api-key', variable: 'OPENAI_API_KEY')]) {
                         bat """
@@ -254,6 +336,8 @@ print('LLM analysis completed')
 "
                         """
                     }
+                    
+                    echo "LLM analysis completed successfully"
                 }
             }
         }
@@ -261,6 +345,9 @@ print('LLM analysis completed')
         stage('Archive Results') {
             steps {
                 script {
+                    echo "Archiving test results..."
+                    echo "Test Run ID: ${TEST_RUN_ID}"
+                    
                     // Archive test results and reports
                     archiveArtifacts artifacts: "test_workspace\\test_results.json", fingerprint: true
                     
@@ -285,6 +372,12 @@ print('LLM analysis completed')
         stage('Analyze Results') {
             steps {
                 script {
+                    echo "Analyzing test results..."
+                    echo "Performance Thresholds:"
+                    echo "  Max Response Time: ${MAX_RESPONSE_TIME_MS}ms"
+                    echo "  Min Success Rate: ${MIN_SUCCESS_RATE_PCT}%"
+                    echo "  Min Requests/sec: ${MIN_REQUESTS_PER_SEC}"
+                    
                     // Load and analyze test results
                     def resultsText = readFile file: "test_workspace\\test_results.json"
                     def results = new groovy.json.JsonSlurper().parseText(resultsText)
@@ -293,6 +386,7 @@ print('LLM analysis completed')
                     echo "  Success: ${results.workflow_success}"
                     echo "  Scenario: ${results.scenario_name}"
                     echo "  Script: ${env.SELECTED_SCRIPT}"
+                    echo "  Test Run ID: ${TEST_RUN_ID}"
                     
                     if (results.test_result) {
                         def testResult = results.test_result
@@ -307,19 +401,22 @@ print('LLM analysis completed')
                             ((testResult.total_requests - testResult.failed_requests) / testResult.total_requests * 100) : 0
                         echo "  Success Rate: ${successRate}%"
                         
+                        // Store calculated values in environment
+                        env.SUCCESS_RATE = successRate
+                        
                         // Performance threshold validation
                         def performanceIssues = []
                         
-                        if (testResult.avg_response_time > params.MAX_AVG_RESPONSE_TIME.toInteger()) {
-                            performanceIssues.add("Average response time (${testResult.avg_response_time}ms) exceeds threshold (${params.MAX_AVG_RESPONSE_TIME}ms)")
+                        if (testResult.avg_response_time > MAX_RESPONSE_TIME_MS.toInteger()) {
+                            performanceIssues.add("Average response time (${testResult.avg_response_time}ms) exceeds threshold (${MAX_RESPONSE_TIME_MS}ms)")
                         }
                         
-                        if (successRate < params.MIN_SUCCESS_RATE.toInteger()) {
-                            performanceIssues.add("Success rate (${successRate}%) below threshold (${params.MIN_SUCCESS_RATE}%)")
+                        if (successRate < MIN_SUCCESS_RATE_PCT.toInteger()) {
+                            performanceIssues.add("Success rate (${successRate}%) below threshold (${MIN_SUCCESS_RATE_PCT}%)")
                         }
                         
-                        if (testResult.requests_per_sec < params.MIN_REQUESTS_PER_SEC.toInteger()) {
-                            performanceIssues.add("Requests per second (${testResult.requests_per_sec}) below threshold (${params.MIN_REQUESTS_PER_SEC})")
+                        if (testResult.requests_per_sec < MIN_REQUESTS_PER_SEC.toInteger()) {
+                            performanceIssues.add("Requests per second (${testResult.requests_per_sec}) below threshold (${MIN_REQUESTS_PER_SEC})")
                         }
                         
                         if (performanceIssues.size() > 0) {
@@ -328,8 +425,10 @@ print('LLM analysis completed')
                                 echo "  - ${issue}"
                             }
                             currentBuild.result = 'UNSTABLE'
+                            env.PERFORMANCE_ISSUES = performanceIssues.join('; ')
                         } else {
                             echo "All performance thresholds met!"
+                            env.PERFORMANCE_ISSUES = "None"
                         }
                     }
                     
@@ -339,6 +438,9 @@ print('LLM analysis completed')
                         echo "LLM Analysis:"
                         echo "  Performance Grade: ${llmAnalysis.performance_grade}"
                         echo "  Summary: ${llmAnalysis.summary}"
+                        
+                        env.LLM_GRADE = llmAnalysis.performance_grade
+                        env.LLM_SUMMARY = llmAnalysis.summary
                         
                         if (llmAnalysis.key_insights) {
                             echo "  Key Insights:"
@@ -364,6 +466,8 @@ print('LLM analysis completed')
             }
             steps {
                 script {
+                    echo "Publishing HTML report..."
+                    
                     // Check if HTML report exists
                     def htmlReportExists = fileExists "test_reports\\*.html"
                     if (htmlReportExists) {
@@ -388,28 +492,45 @@ print('LLM analysis completed')
     post {
         always {
             script {
-                echo "Test Execution Pipeline completed with result: ${currentBuild.result}"
+                echo "=== Test Execution Pipeline Summary ==="
+                echo "Build Number: ${env.BUILD_NUMBER}"
+                echo "Job Name: ${env.JOB_NAME}"
+                echo "Result: ${currentBuild.result}"
                 echo "Build URL: ${env.BUILD_URL}"
-                echo "Script used: ${env.SELECTED_SCRIPT}"
+                echo "Test Run ID: ${TEST_RUN_ID}"
+                echo "Script Used: ${env.SELECTED_SCRIPT}"
+                echo "Environment: ${TEST_ENVIRONMENT}"
+                echo "Target Host: ${params.TARGET_HOST}"
+                echo "Test Success: ${env.TEST_SUCCESS}"
+                echo "Total Requests: ${env.TOTAL_REQUESTS}"
+                echo "Success Rate: ${env.SUCCESS_RATE}%"
+                echo "Avg Response Time: ${env.AVG_RESPONSE_TIME}ms"
+                echo "Performance Issues: ${env.PERFORMANCE_ISSUES}"
                 
-                if (currentBuild.result == 'SUCCESS' || currentBuild.result == 'UNSTABLE') {
-                    echo "Test completed successfully"
-                } else {
-                    echo "Test failed - check logs for details"
+                if (params.USE_LLM_ANALYSIS) {
+                    echo "LLM Grade: ${env.LLM_GRADE}"
                 }
             }
         }
         
         success {
-            echo "Test completed successfully! Check the HTML report for detailed results."
+            echo "✅ Test completed successfully!"
+            echo "📊 Results: ${env.TOTAL_REQUESTS} requests, ${env.SUCCESS_RATE}% success rate"
+            echo "⏱️ Avg Response Time: ${env.AVG_RESPONSE_TIME}ms"
+            echo "📈 Requests/sec: ${env.REQUESTS_PER_SEC}"
+            echo "📋 Check the HTML report for detailed results"
         }
         
         failure {
-            echo "Test execution failed! Check the console output for error details."
+            echo "❌ Test execution failed!"
+            echo "📋 Check the console output for error details"
+            echo "🔧 Verify your script and parameters"
         }
         
         unstable {
-            echo "Test completed with warnings. Performance thresholds not met."
+            echo "⚠️ Test completed with warnings"
+            echo "📊 Performance thresholds not met"
+            echo "🔍 Issues: ${env.PERFORMANCE_ISSUES}"
         }
     }
 } 
