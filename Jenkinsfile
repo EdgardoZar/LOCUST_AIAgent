@@ -8,11 +8,11 @@ pipeline {
         choice(name: 'ENVIRONMENT', choices: ['dev', 'staging', 'prod'], description: 'Target environment')
         
         // Test configuration
-        integer(name: 'USERS', defaultValue: 10, description: 'Number of concurrent users')
-        integer(name: 'SPAWN_RATE', defaultValue: 2, description: 'User spawn rate per second')
+        string(name: 'USERS', defaultValue: '10', description: 'Number of concurrent users')
+        string(name: 'SPAWN_RATE', defaultValue: '2', description: 'User spawn rate per second')
         string(name: 'RUN_TIME', defaultValue: '5m', description: 'Test duration (e.g., 5m, 10m, 1h)')
-        integer(name: 'MIN_WAIT', defaultValue: 1000, description: 'Minimum wait time between requests (ms)')
-        integer(name: 'MAX_WAIT', defaultValue: 5000, description: 'Maximum wait time between requests (ms)')
+        string(name: 'MIN_WAIT', defaultValue: '1000', description: 'Minimum wait time between requests (ms)')
+        string(name: 'MAX_WAIT', defaultValue: '5000', description: 'Maximum wait time between requests (ms)')
         
         // Advanced options
         booleanParam(name: 'USE_LLM_ANALYSIS', defaultValue: false, description: 'Enable LLM-powered analysis')
@@ -21,9 +21,9 @@ pipeline {
         string(name: 'LOG_LEVEL', defaultValue: 'INFO', description: 'Logging level (DEBUG, INFO, WARNING, ERROR)')
         
         // Performance thresholds
-        integer(name: 'MAX_AVG_RESPONSE_TIME', defaultValue: 2000, description: 'Maximum average response time (ms)')
-        integer(name: 'MIN_SUCCESS_RATE', defaultValue: 95, description: 'Minimum success rate percentage')
-        integer(name: 'MIN_REQUESTS_PER_SEC', defaultValue: 10, description: 'Minimum requests per second')
+        string(name: 'MAX_AVG_RESPONSE_TIME', defaultValue: '2000', description: 'Maximum average response time (ms)')
+        string(name: 'MIN_SUCCESS_RATE', defaultValue: '95', description: 'Minimum success rate percentage')
+        string(name: 'MIN_REQUESTS_PER_SEC', defaultValue: '10', description: 'Minimum requests per second')
     }
     
     environment {
