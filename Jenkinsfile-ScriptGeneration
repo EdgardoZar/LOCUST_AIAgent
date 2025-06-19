@@ -151,7 +151,7 @@ pipeline {
                     
                     // Create test configuration as JSON string
                     def testConfigJson = groovy.json.JsonOutput.toJson([
-                        scenario_name: params.SCENARIO_NAME + ENV_SUFFIX,
+                        scenario_name: params.SCENARIO_NAME,
                         host: params.TARGET_HOST,
                         users: params.USERS,
                         spawn_rate: params.SPAWN_RATE,
@@ -207,54 +207,66 @@ print("DEBUG: Starting script generation...")
 try:
     from core.test_agent import LocustTestAgent, TestConfig
     print("DEBUG: Successfully imported LocustTestAgent and TestConfig")
+    
+    # Load and validate scenario configuration
+    scenario_file = os.path.join(workspace_dir, "scenario_config.json")
+    print(f"DEBUG: Loading scenario from: {scenario_file}")
+    with open(scenario_file, "r") as f:
+        scenario_config = json.load(f)
+    
+    # Load test configuration
+    test_config_file = os.path.join(workspace_dir, "test_config.json")
+    print(f"DEBUG: Loading test config from: {test_config_file}")
+    with open(test_config_file, "r") as f:
+        test_config_data = json.load(f)
+    
+    # Validate scenario structure
+    if not scenario_config.get("name"):
+        raise ValueError("Scenario name is required")
+    if not scenario_config.get("steps"):
+        raise ValueError("Scenario steps are required")
+    
+    steps_count = len(scenario_config.get("steps", []))
+    description = scenario_config.get("description", "No description provided")
+    scenario_name = scenario_config["name"]
+    
+    print(f"Scenario: {scenario_name}")
+    print(f"Steps: {steps_count}")
+    print(f"Description: {description}")
+    
+    # Update test config to use scenario name from JSON
+    test_config_data["scenario_name"] = scenario_name
+    
+    test_config = TestConfig(**test_config_data)
+    agent = LocustTestAgent(workspace_dir=workspace_dir)
+    script_path = agent.generate_script(scenario_config, test_config)
+    
+    print(f"Script generated successfully: {script_path}")
+    
+    metadata = {
+        "script_path": script_path,
+        "scenario_name": scenario_name,
+        "steps_count": steps_count,
+        "description": description,
+        "success": True
+    }
+    
+    metadata_file = os.path.join(workspace_dir, "generation_metadata.json")
+    print(f"DEBUG: Writing metadata to: {metadata_file}")
+    with open(metadata_file, "w") as f:
+        json.dump(metadata, f, indent=2)
+        
 except ImportError as e:
     print(f"DEBUG: Import error: {e}")
     print("DEBUG: Available modules:", [m for m in sys.modules.keys() if 'locust' in m.lower()])
-    raise
-
-# Load and validate scenario configuration
-scenario_file = os.path.join(workspace_dir, "scenario_config.json")
-print(f"DEBUG: Loading scenario from: {scenario_file}")
-with open(scenario_file, "r") as f:
-    scenario_config = json.load(f)
-
-# Load test configuration
-test_config_file = os.path.join(workspace_dir, "test_config.json")
-print(f"DEBUG: Loading test config from: {test_config_file}")
-with open(test_config_file, "r") as f:
-    test_config_data = json.load(f)
-
-# Validate scenario structure
-if not scenario_config.get("name"):
-    raise ValueError("Scenario name is required")
-if not scenario_config.get("steps"):
-    raise ValueError("Scenario steps are required")
-
-steps_count = len(scenario_config.get("steps", []))
-description = scenario_config.get("description", "No description provided")
-
-print(f"Scenario: {scenario_config['name']}")
-print(f"Steps: {steps_count}")
-print(f"Description: {description}")
-
-test_config = TestConfig(**test_config_data)
-agent = LocustTestAgent(workspace_dir=workspace_dir)
-script_path = agent.generate_script(scenario_config, test_config)
-
-print(f"Script generated successfully: {script_path}")
-
-metadata = {
-    "script_path": script_path,
-    "scenario_name": scenario_config["name"],
-    "steps_count": steps_count,
-    "description": description,
-    "success": True
-}
-
-metadata_file = os.path.join(workspace_dir, "generation_metadata.json")
-print(f"DEBUG: Writing metadata to: {metadata_file}")
-with open(metadata_file, "w") as f:
-    json.dump(metadata, f, indent=2)
+    metadata = {
+        "success": False,
+        "error": f"Import error: {str(e)}"
+    }
+    metadata_file = os.path.join(workspace_dir, "generation_metadata.json")
+    with open(metadata_file, "w") as f:
+        json.dump(metadata, f, indent=2)
+    sys.exit(1)
     
 except Exception as e:
     print(f"Error: {str(e)}")
