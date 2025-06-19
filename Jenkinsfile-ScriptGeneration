@@ -155,73 +155,60 @@ pipeline {
                     
                     writeFile file: "${WORKSPACE_DIR}\\test_config.json", text: testConfigJson
                     
-                    // Generate script using AI Agent with Python handling all JSON parsing
-                    bat """
-                        call venv\\Scripts\\activate.bat
-                        cd ${WORKSPACE}
-                        set PYTHONPATH=%PYTHONPATH%;${WORKSPACE}
-                        
-                        python -c "
+                    // Write the Python script to a file
+                    def pyScript = '''
 import sys
 import json
-sys.path.insert(0, '.')
-
+sys.path.insert(0, ".")
 try:
     from Locust_AI_Agent.core.test_agent import LocustTestAgent, TestConfig
-    
     # Load and validate scenario configuration
-    with open('${WORKSPACE_DIR}\\scenario_config.json', 'r') as f:
+    with open(r"${WORKSPACE_DIR}\\scenario_config.json", "r") as f:
         scenario_config = json.load(f)
-    
     # Load test configuration
-    with open('${WORKSPACE_DIR}\\test_config.json', 'r') as f:
+    with open(r"${WORKSPACE_DIR}\\test_config.json", "r") as f:
         test_config_data = json.load(f)
-    
     # Validate scenario structure
-    if not scenario_config.get('name'):
-        raise ValueError('Scenario name is required')
-    if not scenario_config.get('steps'):
-        raise ValueError('Scenario steps are required')
-    
-    # Update environment info
-    steps_count = len(scenario_config.get('steps', []))
-    description = scenario_config.get('description', 'No description provided')
-    
-    print(f'Scenario: {scenario_config[\"name\"]}')
-    print(f'Steps: {steps_count}')
-    print(f'Description: {description}')
-    
-    # Create test config
+    if not scenario_config.get("name"):
+        raise ValueError("Scenario name is required")
+    if not scenario_config.get("steps"):
+        raise ValueError("Scenario steps are required")
+    steps_count = len(scenario_config.get("steps", []))
+    description = scenario_config.get("description", "No description provided")
+    print(f"Scenario: {scenario_config['name']}")
+    print(f"Steps: {steps_count}")
+    print(f"Description: {description}")
     test_config = TestConfig(**test_config_data)
-    
-    # Generate script
-    agent = LocustTestAgent(workspace_dir='${WORKSPACE_DIR}')
+    agent = LocustTestAgent(workspace_dir=r"${WORKSPACE_DIR}")
     script_path = agent.generate_script(scenario_config, test_config)
-    
-    print(f'Script generated successfully: {script_path}')
-    
-    # Write metadata for Jenkins
+    print(f"Script generated successfully: {script_path}")
     metadata = {
-        'script_path': script_path,
-        'scenario_name': scenario_config['name'],
-        'steps_count': steps_count,
-        'description': description,
-        'success': True
+        "script_path": script_path,
+        "scenario_name": scenario_config["name"],
+        "steps_count": steps_count,
+        "description": description,
+        "success": True
     }
-    
-    with open('${WORKSPACE_DIR}\\generation_metadata.json', 'w') as f:
+    with open(r"${WORKSPACE_DIR}\\generation_metadata.json", "w") as f:
         json.dump(metadata, f, indent=2)
-    
 except Exception as e:
-    print(f'Error: {str(e)}')
+    print(f"Error: {str(e)}")
     metadata = {
-        'success': False,
-        'error': str(e)
+        "success": False,
+        "error": str(e)
     }
-    with open('${WORKSPACE_DIR}\\generation_metadata.json', 'w') as f:
+    with open(r"${WORKSPACE_DIR}\\generation_metadata.json", "w") as f:
         json.dump(metadata, f, indent=2)
     sys.exit(1)
-"
+'''
+                    writeFile file: "${WORKSPACE_DIR}\\generate_script.py", text: pyScript
+                    
+                    // Run the Python script
+                    bat """
+                        call venv\Scripts\activate.bat
+                        cd ${WORKSPACE}
+                        set PYTHONPATH=%PYTHONPATH%;${WORKSPACE}
+                        python ${WORKSPACE_DIR}\generate_script.py
                     """
                     
                     // Read generation metadata
