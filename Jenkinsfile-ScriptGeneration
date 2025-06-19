@@ -49,6 +49,24 @@ pipeline {
     }
     
     stages {
+        stage('Cleanup Workspace') {
+            steps {
+                script {
+                    echo "Cleaning up workspace to ensure fresh start..."
+                    
+                    // Remove any existing generated files
+                    bat """
+                        if exist "${WORKSPACE_DIR}\\generate_script.py" del "${WORKSPACE_DIR}\\generate_script.py"
+                        if exist "${WORKSPACE_DIR}\\scenario_config.json" del "${WORKSPACE_DIR}\\scenario_config.json"
+                        if exist "${WORKSPACE_DIR}\\test_config.json" del "${WORKSPACE_DIR}\\test_config.json"
+                        if exist "${WORKSPACE_DIR}\\generation_metadata.json" del "${WORKSPACE_DIR}\\generation_metadata.json"
+                    """
+                    
+                    echo "Workspace cleanup completed"
+                }
+            }
+        }
+        
         stage('Checkout') {
             steps {
                 checkout scm
