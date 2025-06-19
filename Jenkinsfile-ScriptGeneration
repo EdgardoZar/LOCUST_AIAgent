@@ -332,7 +332,7 @@ except Exception as e:
                     def commitMessage = params.GIT_COMMIT_MESSAGE ?: "Generated script: ${params.SCENARIO_NAME} - ${TIMESTAMP} - ${BUILD_INFO}"
                     bat """
                         git add -f generated_scripts\\*.py
-                        git commit -m "${commitMessage}" || echo "No changes to commit - script is identical"
+                        git diff --cached --quiet && echo "No changes to commit - script is identical" || git commit -m "${commitMessage}"
                     """
                     
                     // Push to remote (don't fail if no changes)
