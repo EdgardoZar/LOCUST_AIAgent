@@ -144,7 +144,7 @@ pipeline {
                         scenarioConfig.steps[2].config.headers["Authorization"] = "Bearer ${params.API_TOKEN}"
                     }
                     
-                    writeJSON file: "${WORKSPACE_DIR}\\scenario_config.json", json: scenarioConfig
+                    writeFile file: "${WORKSPACE_DIR}\\scenario_config.json", text: groovy.json.JsonOutput.toJson(scenarioConfig)
                     
                     // Create test configuration
                     def testConfig = [
@@ -171,7 +171,7 @@ pipeline {
                         log_level: params.LOG_LEVEL
                     ]
                     
-                    writeJSON file: "${WORKSPACE_DIR}\\test_config.json", json: testConfig
+                    writeFile file: "${WORKSPACE_DIR}\\test_config.json", text: groovy.json.JsonOutput.toJson(testConfig)
                     
                     echo "Test configuration created:"
                     echo "  Scenario: ${testConfig.scenario_name}"
@@ -275,7 +275,8 @@ with open('${WORKSPACE_DIR}\\test_results_with_llm.json', 'w') as f:
             steps {
                 script {
                     // Load and analyze test results
-                    def results = readJSON file: "${WORKSPACE_DIR}\\test_results.json"
+                    def resultsText = readFile file: "${WORKSPACE_DIR}\\test_results.json"
+                    def results = new groovy.json.JsonSlurper().parseText(resultsText)
                     
                     echo "Test Results Analysis:"
                     echo "  Success: ${results.workflow_success}"
@@ -351,9 +352,9 @@ with open('${WORKSPACE_DIR}\\test_results_with_llm.json', 'w') as f:
             }
             steps {
                 script {
-                    // Find HTML report file
-                    def htmlFiles = findFiles(glob: "${REPORTS_DIR}\\**\\*.html")
-                    if (htmlFiles.length > 0) {
+                    // Check if HTML report exists
+                    def htmlReportExists = fileExists "${REPORTS_DIR}\\*.html"
+                    if (htmlReportExists) {
                         publishHTML([
                             allowMissing: false,
                             alwaysLinkToLastBuild: true,
