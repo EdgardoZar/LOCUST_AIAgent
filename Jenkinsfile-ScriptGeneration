@@ -179,6 +179,8 @@ pipeline {
                     // Write the Python script to a file with timestamp to avoid caching
                     def scriptFilename = "generate_script_${BUILD_NUMBER}_${System.currentTimeMillis()}.py"
                     def pyScript = """
+# DEBUG: This is the NEW self-contained script - Build ${BUILD_NUMBER}
+# If you see this message, the new script is running correctly
 import sys
 import json
 import os
@@ -190,6 +192,8 @@ from typing import Dict, List, Optional, Any
 from pathlib import Path
 from dataclasses import dataclass, asdict
 
+print("DEBUG: NEW SCRIPT IS RUNNING - Build ${BUILD_NUMBER}")
+
 # Get paths from command line arguments
 if len(sys.argv) < 3:
     print("Usage: python script.py <workspace> <workspace_dir>")
@@ -197,6 +201,9 @@ if len(sys.argv) < 3:
 
 workspace = sys.argv[1]
 workspace_dir = sys.argv[2]
+
+print(f"DEBUG: Workspace: {workspace}")
+print(f"DEBUG: Workspace dir: {workspace_dir}")
 
 # Include the necessary classes directly to avoid import issues
 @dataclass
@@ -358,13 +365,17 @@ class LocustTestAgent:
         return ''.join(word.capitalize() for word in scenario_name.replace('-', ' ').replace('_', ' ').split())
 
 try:
+    print("DEBUG: Starting script generation...")
+    
     # Load and validate scenario configuration
     scenario_file = os.path.join(workspace_dir, "scenario_config.json")
+    print(f"DEBUG: Loading scenario from: {scenario_file}")
     with open(scenario_file, "r") as f:
         scenario_config = json.load(f)
     
     # Load test configuration
     test_config_file = os.path.join(workspace_dir, "test_config.json")
+    print(f"DEBUG: Loading test config from: {test_config_file}")
     with open(test_config_file, "r") as f:
         test_config_data = json.load(f)
     
@@ -396,6 +407,7 @@ try:
     }
     
     metadata_file = os.path.join(workspace_dir, "generation_metadata.json")
+    print(f"DEBUG: Writing metadata to: {metadata_file}")
     with open(metadata_file, "w") as f:
         json.dump(metadata, f, indent=2)
         
@@ -412,11 +424,15 @@ except Exception as e:
 """
                     writeFile file: "${WORKSPACE_DIR}\\${scriptFilename}", text: pyScript
                     
+                    echo "DEBUG: Written script file: ${WORKSPACE_DIR}\\${scriptFilename}"
+                    echo "DEBUG: Script content preview (first 200 chars): ${pyScript.take(200)}"
+                    
                     // Run the Python script directly without package installation
                     bat """
                         call venv\\Scripts\\activate.bat
                         cd ${WORKSPACE}
                         set PYTHONPATH=%PYTHONPATH%;%CD%
+                        echo DEBUG: About to run: python ${WORKSPACE_DIR}\\${scriptFilename} "${WORKSPACE}" "${WORKSPACE_DIR}"
                         python ${WORKSPACE_DIR}\\${scriptFilename} "${WORKSPACE}" "${WORKSPACE_DIR}"
                     """
                     
