@@ -234,18 +234,18 @@ except Exception as e:
 """
                     writeFile file: "${WORKSPACE_DIR}\\generate_script.py", text: pyScript
                     
-                    // Install the package in development mode
+                    // Install the package in development mode from the workspace root
                     bat """
                         call venv\\Scripts\\activate.bat
                         cd ${WORKSPACE}
                         pip install -e .
                     """
                     
-                    // Run the Python script with command line arguments
+                    // Run the Python script from the workspace root, set PYTHONPATH
                     bat """
                         call venv\\Scripts\\activate.bat
                         cd ${WORKSPACE}
-                        set PYTHONPATH=%PYTHONPATH%;${WORKSPACE}
+                        set PYTHONPATH=%PYTHONPATH%;%CD%
                         python ${WORKSPACE_DIR}\\generate_script.py "${WORKSPACE}" "${WORKSPACE_DIR}"
                     """
                     
