@@ -20,7 +20,7 @@ pipeline {
         TIMESTAMP = "${new Date().format('yyyyMMdd_HHmmss')}"
         
         // Git configuration
-        GIT_SCRIPTS_BRANCH = "${env.GIT_SCRIPTS_BRANCH ?: 'generated-scripts'}"
+        GIT_SCRIPTS_BRANCH = "${env.GIT_SCRIPTS_BRANCH ?: 'generated_scripts'}"
         GIT_EMAIL = "${env.JENKINS_GIT_EMAIL ?: 'jenkins@example.com'}"
         GIT_USER = "${env.JENKINS_GIT_USER ?: 'Jenkins Pipeline'}"
         
@@ -48,6 +48,9 @@ pipeline {
                         if exist "${WORKSPACE_DIR}\\generation_metadata.json" del "${WORKSPACE_DIR}\\generation_metadata.json"
                         if exist "${WORKSPACE_DIR}\\generated_scripts" rmdir /s /q "${WORKSPACE_DIR}\\generated_scripts"
                         if exist "${WORKSPACE_DIR}\\generated_reports" rmdir /s /q "${WORKSPACE_DIR}\\generated_reports"
+                        
+                        REM Uncomment the next line if you want to force clean virtual environment installation
+                        REM if exist "venv" rmdir /s /q "venv"
                     """
                     
                     echo "Workspace cleanup completed"
