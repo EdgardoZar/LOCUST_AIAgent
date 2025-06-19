@@ -54,12 +54,15 @@ pipeline {
                 script {
                     echo "Cleaning up workspace to ensure fresh start..."
                     
-                    // Remove any existing generated files
+                    // Remove any existing generated files and directories
                     bat """
                         if exist "${WORKSPACE_DIR}\\generate_script.py" del "${WORKSPACE_DIR}\\generate_script.py"
+                        if exist "${WORKSPACE_DIR}\\generate_script_*.py" del "${WORKSPACE_DIR}\\generate_script_*.py"
                         if exist "${WORKSPACE_DIR}\\scenario_config.json" del "${WORKSPACE_DIR}\\scenario_config.json"
                         if exist "${WORKSPACE_DIR}\\test_config.json" del "${WORKSPACE_DIR}\\test_config.json"
                         if exist "${WORKSPACE_DIR}\\generation_metadata.json" del "${WORKSPACE_DIR}\\generation_metadata.json"
+                        if exist "${WORKSPACE_DIR}\\generated_scripts" rmdir /s /q "${WORKSPACE_DIR}\\generated_scripts"
+                        if exist "${WORKSPACE_DIR}\\generated_reports" rmdir /s /q "${WORKSPACE_DIR}\\generated_reports"
                     """
                     
                     echo "Workspace cleanup completed"
@@ -173,7 +176,8 @@ pipeline {
                     
                     writeFile file: "${WORKSPACE_DIR}\\test_config.json", text: testConfigJson
                     
-                    // Write the Python script to a file
+                    // Write the Python script to a file with timestamp to avoid caching
+                    def scriptFilename = "generate_script_${BUILD_NUMBER}_${System.currentTimeMillis()}.py"
                     def pyScript = """
 import sys
 import json
@@ -406,14 +410,14 @@ except Exception as e:
         json.dump(metadata, f, indent=2)
     sys.exit(1)
 """
-                    writeFile file: "${WORKSPACE_DIR}\\generate_script.py", text: pyScript
+                    writeFile file: "${WORKSPACE_DIR}\\${scriptFilename}", text: pyScript
                     
                     // Run the Python script directly without package installation
                     bat """
                         call venv\\Scripts\\activate.bat
                         cd ${WORKSPACE}
                         set PYTHONPATH=%PYTHONPATH%;%CD%
-                        python ${WORKSPACE_DIR}\\generate_script.py "${WORKSPACE}" "${WORKSPACE_DIR}"
+                        python ${WORKSPACE_DIR}\\${scriptFilename} "${WORKSPACE}" "${WORKSPACE_DIR}"
                     """
                     
                     // Read generation metadata
