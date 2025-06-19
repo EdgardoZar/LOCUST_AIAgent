@@ -46,4 +46,7 @@ test_results.json
 test_results_with_llm.json
 
 # Environment variables
-.env 
+.env
+
+# Note: generated_scripts/ in root directory IS tracked by Git
+# Only test_workspace/ and test_reports/ are ignored 
