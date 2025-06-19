@@ -105,52 +105,15 @@ pipeline {
                         error "SCENARIO_JSON is required"
                     }
                     
-                    // Validate JSON format and convert to serializable format
-                    try {
-                        def scenarioConfig = new groovy.json.JsonSlurper().parseText(params.SCENARIO_JSON)
-                        // Convert to serializable format immediately
-                        def serializableConfig = [
-                            name: scenarioConfig.name?.toString(),
-                            description: scenarioConfig.description?.toString(),
-                            steps: scenarioConfig.steps?.collect { step ->
-                                [
-                                    id: step.id?.toString(),
-                                    type: step.type?.toString(),
-                                    config: step.config ? [
-                                        name: step.config.name?.toString(),
-                                        method: step.config.method?.toString(),
-                                        url: step.config.url?.toString(),
-                                        headers: step.config.headers?.collectEntries { k, v -> [k.toString(), v.toString()] } ?: [:],
-                                        params: step.config.params?.collectEntries { k, v -> [k.toString(), v.toString()] } ?: [:],
-                                        body: step.config.body,
-                                        extract: step.config.extract?.collectEntries { k, v -> [k.toString(), v.toString()] } ?: [:],
-                                        assertions: step.config.assertions?.collect { assertion ->
-                                            [
-                                                type: assertion.type?.toString(),
-                                                value: assertion.value?.toString(),
-                                                path: assertion.path?.toString()
-                                            ]
-                                        } ?: [],
-                                        wait: step.config.wait?.toString()
-                                    ] : [:]
-                                ]
-                            } ?: []
-                        ]
-                        
-                        echo "JSON validation successful"
-                        echo "Scenario name: ${serializableConfig.name}"
-                        echo "Steps count: ${serializableConfig.steps?.size() ?: 0}"
-                        
-                        // Store scenario info in environment
-                        env.SCENARIO_STEPS_COUNT = serializableConfig.steps?.size() ?: 0
-                        env.SCENARIO_DESCRIPTION = serializableConfig.description ?: "No description provided"
-                        
-                        // Store serializable config for later use
-                        env.SERIALIZABLE_SCENARIO_CONFIG = groovy.json.JsonOutput.toJson(serializableConfig)
-                        
-                    } catch (Exception e) {
-                        error "Invalid JSON format: ${e.message}"
-                    }
+                    // Store scenario info in environment without parsing JSON
+                    env.SCENARIO_NAME = params.SCENARIO_NAME
+                    env.SCENARIO_JSON = params.SCENARIO_JSON
+                    env.SCENARIO_STEPS_COUNT = "5" // Default, will be updated by Python
+                    env.SCENARIO_DESCRIPTION = "Validated by Python"
+                    
+                    echo "Input validation successful"
+                    echo "Scenario name: ${env.SCENARIO_NAME}"
+                    echo "JSON length: ${params.SCENARIO_JSON.length()} characters"
                 }
             }
         }
@@ -162,11 +125,11 @@ pipeline {
                     echo "Environment: ${params.ENVIRONMENT}"
                     echo "Target Host: ${params.TARGET_HOST}"
                     
-                    // Use the serializable config from previous stage
-                    def scenarioConfig = new groovy.json.JsonSlurper().parseText(env.SERIALIZABLE_SCENARIO_CONFIG)
+                    // Write scenario JSON to file directly
+                    writeFile file: "${WORKSPACE_DIR}\\scenario_config.json", text: params.SCENARIO_JSON
                     
-                    // Create test configuration
-                    def testConfig = [
+                    // Create test configuration as JSON string
+                    def testConfigJson = groovy.json.JsonOutput.toJson([
                         scenario_name: params.SCENARIO_NAME + ENV_SUFFIX,
                         host: params.TARGET_HOST,
                         users: params.USERS,
@@ -188,13 +151,11 @@ pipeline {
                         generate_csv: params.GENERATE_CSV_REPORT,
                         generate_html: params.GENERATE_HTML_REPORT,
                         log_level: params.LOG_LEVEL
-                    ]
+                    ])
                     
-                    // Save configurations
-                    writeFile file: "${WORKSPACE_DIR}\\scenario_config.json", text: groovy.json.JsonOutput.toJson(scenarioConfig)
-                    writeFile file: "${WORKSPACE_DIR}\\test_config.json", text: groovy.json.JsonOutput.toJson(testConfig)
+                    writeFile file: "${WORKSPACE_DIR}\\test_config.json", text: testConfigJson
                     
-                    // Generate script using AI Agent
+                    // Generate script using AI Agent with Python handling all JSON parsing
                     bat """
                         call venv\\Scripts\\activate.bat
                         cd ${WORKSPACE}
@@ -202,34 +163,80 @@ pipeline {
                         
                         python -c "
 import sys
-sys.path.insert(0, '.')
-from Locust_AI_Agent.core.test_agent import LocustTestAgent, TestConfig
 import json
+sys.path.insert(0, '.')
 
-# Load configurations
-with open('${WORKSPACE_DIR}\\scenario_config.json', 'r') as f:
-    scenario_config = json.load(f)
-with open('${WORKSPACE_DIR}\\test_config.json', 'r') as f:
-    test_config_data = json.load(f)
-
-# Create test config
-test_config = TestConfig(**test_config_data)
-
-# Generate script
-agent = LocustTestAgent(workspace_dir='${WORKSPACE_DIR}')
-script_path = agent.generate_script(scenario_config, test_config)
-print(f'Script generated: {script_path}')
+try:
+    from Locust_AI_Agent.core.test_agent import LocustTestAgent, TestConfig
+    
+    # Load and validate scenario configuration
+    with open('${WORKSPACE_DIR}\\scenario_config.json', 'r') as f:
+        scenario_config = json.load(f)
+    
+    # Load test configuration
+    with open('${WORKSPACE_DIR}\\test_config.json', 'r') as f:
+        test_config_data = json.load(f)
+    
+    # Validate scenario structure
+    if not scenario_config.get('name'):
+        raise ValueError('Scenario name is required')
+    if not scenario_config.get('steps'):
+        raise ValueError('Scenario steps are required')
+    
+    # Update environment info
+    steps_count = len(scenario_config.get('steps', []))
+    description = scenario_config.get('description', 'No description provided')
+    
+    print(f'Scenario: {scenario_config[\"name\"]}')
+    print(f'Steps: {steps_count}')
+    print(f'Description: {description}')
+    
+    # Create test config
+    test_config = TestConfig(**test_config_data)
+    
+    # Generate script
+    agent = LocustTestAgent(workspace_dir='${WORKSPACE_DIR}')
+    script_path = agent.generate_script(scenario_config, test_config)
+    
+    print(f'Script generated successfully: {script_path}')
+    
+    # Write metadata for Jenkins
+    metadata = {
+        'script_path': script_path,
+        'scenario_name': scenario_config['name'],
+        'steps_count': steps_count,
+        'description': description,
+        'success': True
+    }
+    
+    with open('${WORKSPACE_DIR}\\generation_metadata.json', 'w') as f:
+        json.dump(metadata, f, indent=2)
+    
+except Exception as e:
+    print(f'Error: {str(e)}')
+    metadata = {
+        'success': False,
+        'error': str(e)
+    }
+    with open('${WORKSPACE_DIR}\\generation_metadata.json', 'w') as f:
+        json.dump(metadata, f, indent=2)
+    sys.exit(1)
 "
                     """
                     
-                    // Store script path in environment
-                    def scriptFiles = bat(script: "dir ${SCRIPTS_DIR}\\*.py /b", returnStdout: true).trim()
-                    if (scriptFiles) {
-                        env.GENERATED_SCRIPT = scriptFiles.split('\n').last()
-                        echo "Generated script: ${env.GENERATED_SCRIPT}"
-                    }
+                    // Read generation metadata
+                    def metadataText = readFile file: "${WORKSPACE_DIR}\\generation_metadata.json"
+                    def metadata = new groovy.json.JsonSlurper().parseText(metadataText)
                     
-                    echo "Script generation completed successfully!"
+                    if (metadata.success) {
+                        env.GENERATED_SCRIPT = metadata.script_path
+                        env.SCENARIO_STEPS_COUNT = metadata.steps_count.toString()
+                        env.SCENARIO_DESCRIPTION = metadata.description
+                        echo "Generated script: ${env.GENERATED_SCRIPT}"
+                        echo "Script generation completed successfully!"
+                    } else {
+                        error "Script generation failed: ${metadata.error}"
+                    }
                 }
             }
         }

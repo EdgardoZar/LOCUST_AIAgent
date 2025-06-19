@@ -273,46 +273,107 @@ print(f'Test completed: Success={result.success}')
                     
                     // Store test results in environment
                     def resultsText = readFile file: "${WORKSPACE_DIR}\\test_results.json"
-                    def results = new groovy.json.JsonSlurper().parseText(resultsText)
                     
-                    // Convert to serializable format immediately
-                    def serializableResults = [
-                        workflow_success: results.workflow_success?.toString(),
-                        scenario_name: results.scenario_name?.toString(),
-                        script_path: results.script_path?.toString(),
-                        test_result: results.test_result ? [
-                            execution_time: results.test_result.execution_time?.toString(),
-                            total_requests: results.test_result.total_requests?.toString(),
-                            failed_requests: results.test_result.failed_requests?.toString(),
-                            avg_response_time: results.test_result.avg_response_time?.toString(),
-                            requests_per_sec: results.test_result.requests_per_sec?.toString(),
-                            html_report_path: results.test_result.html_report_path?.toString(),
-                            csv_report_path: results.test_result.csv_report_path?.toString()
-                        ] : [:],
-                        llm_analysis: results.llm_analysis ? [
-                            performance_grade: results.llm_analysis.performance_grade?.toString(),
-                            summary: results.llm_analysis.summary?.toString(),
-                            key_insights: results.llm_analysis.key_insights?.collect { it.toString() } ?: [],
-                            recommendations: results.llm_analysis.recommendations?.collect { it.toString() } ?: []
-                        ] : [:]
-                    ]
+                    // Parse results using Python to avoid serialization issues
+                    bat """
+                        call venv\\Scripts\\activate.bat
+                        cd ${WORKSPACE}
+                        set PYTHONPATH=%PYTHONPATH%;${WORKSPACE}
+                        
+                        python -c "
+import sys
+import json
+sys.path.insert(0, '.')
+
+try:
+    # Load test results
+    with open('${WORKSPACE_DIR}\\test_results.json', 'r') as f:
+        results = json.load(f)
+    
+    # Extract and validate data
+    workflow_success = results.get('workflow_success', False)
+    scenario_name = results.get('scenario_name', 'Unknown')
+    script_path = results.get('script_path', 'Unknown')
+    
+    test_result = results.get('test_result', {})
+    total_requests = test_result.get('total_requests', 0)
+    failed_requests = test_result.get('failed_requests', 0)
+    avg_response_time = test_result.get('avg_response_time', 0)
+    requests_per_sec = test_result.get('requests_per_sec', 0)
+    execution_time = test_result.get('execution_time', 0)
+    html_report_path = test_result.get('html_report_path', '')
+    csv_report_path = test_result.get('csv_report_path', '')
+    
+    llm_analysis = results.get('llm_analysis', {})
+    performance_grade = llm_analysis.get('performance_grade', 'N/A')
+    summary = llm_analysis.get('summary', 'N/A')
+    key_insights = llm_analysis.get('key_insights', [])
+    recommendations = llm_analysis.get('recommendations', [])
+    
+    # Create metadata for Jenkins
+    metadata = {
+        'workflow_success': workflow_success,
+        'scenario_name': scenario_name,
+        'script_path': script_path,
+        'test_result': {
+            'execution_time': execution_time,
+            'total_requests': total_requests,
+            'failed_requests': failed_requests,
+            'avg_response_time': avg_response_time,
+            'requests_per_sec': requests_per_sec
+        },
+        'llm_analysis': {
+            'performance_grade': performance_grade,
+            'summary': summary,
+            'key_insights': key_insights,
+            'recommendations': recommendations
+        },
+        'success': True
+    }
+    
+    with open('${WORKSPACE_DIR}\\test_metadata.json', 'w') as f:
+        json.dump(metadata, f, indent=2)
+    
+    print(f'Test results processed successfully')
+    print(f'Success: {workflow_success}')
+    print(f'Total Requests: {total_requests}')
+    print(f'Failed Requests: {failed_requests}')
+    print(f'Avg Response Time: {avg_response_time}ms')
+    print(f'Requests/sec: {requests_per_sec}')
+    
+except Exception as e:
+    print(f'Error processing test results: {str(e)}')
+    metadata = {
+        'success': False,
+        'error': str(e)
+    }
+    with open('${WORKSPACE_DIR}\\test_metadata.json', 'w') as f:
+        json.dump(metadata, f, indent=2)
+    sys.exit(1)
+"
+                    """
                     
-                    env.TEST_SUCCESS = serializableResults.workflow_success
-                    env.TOTAL_REQUESTS = serializableResults.test_result.total_requests
-                    env.FAILED_REQUESTS = serializableResults.test_result.failed_requests
-                    env.AVG_RESPONSE_TIME = serializableResults.test_result.avg_response_time
-                    env.REQUESTS_PER_SEC = serializableResults.test_result.requests_per_sec
-                    env.EXECUTION_TIME = serializableResults.test_result.execution_time
+                    // Read test metadata
+                    def metadataText = readFile file: "${WORKSPACE_DIR}\\test_metadata.json"
+                    def metadata = new groovy.json.JsonSlurper().parseText(metadataText)
                     
-                    // Store serializable results for later use
-                    env.SERIALIZABLE_TEST_RESULTS = groovy.json.JsonOutput.toJson(serializableResults)
-                    
-                    echo "Test execution completed"
-                    echo "Success: ${env.TEST_SUCCESS}"
-                    echo "Total Requests: ${env.TOTAL_REQUESTS}"
-                    echo "Failed Requests: ${env.FAILED_REQUESTS}"
-                    echo "Avg Response Time: ${env.AVG_RESPONSE_TIME}ms"
-                    echo "Requests/sec: ${env.REQUESTS_PER_SEC}"
+                    if (metadata.success) {
+                        env.TEST_SUCCESS = metadata.workflow_success.toString()
+                        env.TOTAL_REQUESTS = metadata.test_result.total_requests.toString()
+                        env.FAILED_REQUESTS = metadata.test_result.failed_requests.toString()
+                        env.AVG_RESPONSE_TIME = metadata.test_result.avg_response_time.toString()
+                        env.REQUESTS_PER_SEC = metadata.test_result.requests_per_sec.toString()
+                        env.EXECUTION_TIME = metadata.test_result.execution_time.toString()
+                        
+                        echo "Test execution completed"
+                        echo "Success: ${env.TEST_SUCCESS}"
+                        echo "Total Requests: ${env.TOTAL_REQUESTS}"
+                        echo "Failed Requests: ${env.FAILED_REQUESTS}"
+                        echo "Avg Response Time: ${env.AVG_RESPONSE_TIME}ms"
+                        echo "Requests/sec: ${env.REQUESTS_PER_SEC}"
+                    } else {
+                        error "Failed to process test results: ${metadata.error}"
+                    }
                 }
             }
         }
@@ -403,40 +464,24 @@ print('LLM analysis completed')
                     echo "  Min Success Rate: ${MIN_SUCCESS_RATE_PCT}%"
                     echo "  Min Requests/sec: ${MIN_REQUESTS_PER_SEC}"
                     
-                    // Load and analyze test results
-                    def resultsText = readFile file: "test_workspace\\test_results.json"
-                    def results = new groovy.json.JsonSlurper().parseText(resultsText)
+                    // Load and analyze test results using metadata from previous stage
+                    def metadataText = readFile file: "${WORKSPACE_DIR}\\test_metadata.json"
+                    def metadata = new groovy.json.JsonSlurper().parseText(metadataText)
                     
-                    // Convert to serializable format immediately
-                    def serializableResults = [
-                        workflow_success: results.workflow_success?.toString(),
-                        scenario_name: results.scenario_name?.toString(),
-                        script_path: results.script_path?.toString(),
-                        test_result: results.test_result ? [
-                            execution_time: results.test_result.execution_time?.toString(),
-                            total_requests: results.test_result.total_requests?.toString(),
-                            failed_requests: results.test_result.failed_requests?.toString(),
-                            avg_response_time: results.test_result.avg_response_time?.toString(),
-                            requests_per_sec: results.test_result.requests_per_sec?.toString(),
-                            html_report_path: results.test_result.html_report_path?.toString(),
-                            csv_report_path: results.test_result.csv_report_path?.toString()
-                        ] : [:],
-                        llm_analysis: results.llm_analysis ? [
-                            performance_grade: results.llm_analysis.performance_grade?.toString(),
-                            summary: results.llm_analysis.summary?.toString(),
-                            key_insights: results.llm_analysis.key_insights?.collect { it.toString() } ?: [],
-                            recommendations: results.llm_analysis.recommendations?.collect { it.toString() } ?: []
-                        ] : [:]
-                    ]
+                    if (!metadata.success) {
+                        error "Cannot analyze results: ${metadata.error}"
+                    }
+                    
+                    def results = metadata
                     
                     echo "Test Results Analysis:"
-                    echo "  Success: ${serializableResults.workflow_success}"
-                    echo "  Scenario: ${serializableResults.scenario_name}"
+                    echo "  Success: ${results.workflow_success}"
+                    echo "  Scenario: ${results.scenario_name}"
                     echo "  Script: ${env.SELECTED_SCRIPT}"
                     echo "  Test Run ID: ${TEST_RUN_ID}"
                     
-                    if (serializableResults.test_result) {
-                        def testResult = serializableResults.test_result
+                    if (results.test_result) {
+                        def testResult = results.test_result
                         echo "  Execution Time: ${testResult.execution_time}s"
                         echo "  Total Requests: ${testResult.total_requests}"
                         echo "  Failed Requests: ${testResult.failed_requests}"
@@ -480,8 +525,8 @@ print('LLM analysis completed')
                     }
                     
                     // LLM analysis summary
-                    if (params.USE_LLM_ANALYSIS && serializableResults.llm_analysis) {
-                        def llmAnalysis = serializableResults.llm_analysis
+                    if (params.USE_LLM_ANALYSIS && results.llm_analysis) {
+                        def llmAnalysis = results.llm_analysis
                         echo "LLM Analysis:"
                         echo "  Performance Grade: ${llmAnalysis.performance_grade}"
                         echo "  Summary: ${llmAnalysis.summary}"
