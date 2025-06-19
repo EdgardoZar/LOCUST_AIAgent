@@ -267,6 +267,10 @@ class LocustTestAgent:
     def _generate_basic_script(self, scenario: Dict[str, Any], config: TestConfig) -> str:
         class_name = self._class_name_from_scenario(scenario['name'])
         
+        # Convert wait times to integers to avoid division errors
+        min_wait_sec = int(config.min_wait) / 1000
+        max_wait_sec = int(config.max_wait) / 1000
+        
         script_lines = [
             "from locust import HttpUser, task, between",
             "import json",
@@ -274,7 +278,7 @@ class LocustTestAgent:
             "import logging",
             "",
             f"class {class_name}User(HttpUser):",
-            f"    wait_time = between({config.min_wait/1000}, {config.max_wait/1000})",
+            f"    wait_time = between({min_wait_sec}, {max_wait_sec})",
             "",
             "    def on_start(self):",
             "        self.variables = {}",
