@@ -156,32 +156,50 @@ pipeline {
                     writeFile file: "${WORKSPACE_DIR}\\test_config.json", text: testConfigJson
                     
                     // Write the Python script to a file
-                    def pyScript = '''
+                    def pyScript = """
 import sys
 import json
-sys.path.insert(0, ".")
+import os
+sys.path.insert(0, "${WORKSPACE}")
+
 try:
-    from Locust_AI_Agent.core.test_agent import LocustTestAgent, TestConfig
+    # Try to import the module
+    try:
+        from Locust_AI_Agent.core.test_agent import LocustTestAgent, TestConfig
+    except ImportError:
+        # Fallback: try relative import
+        sys.path.insert(0, os.path.join("${WORKSPACE}", "core"))
+        from test_agent import LocustTestAgent, TestConfig
+    
     # Load and validate scenario configuration
-    with open(r"${WORKSPACE_DIR}\\scenario_config.json", "r") as f:
+    scenario_file = os.path.join("${WORKSPACE_DIR}", "scenario_config.json")
+    with open(scenario_file, "r") as f:
         scenario_config = json.load(f)
+    
     # Load test configuration
-    with open(r"${WORKSPACE_DIR}\\test_config.json", "r") as f:
+    test_config_file = os.path.join("${WORKSPACE_DIR}", "test_config.json")
+    with open(test_config_file, "r") as f:
         test_config_data = json.load(f)
+    
     # Validate scenario structure
     if not scenario_config.get("name"):
         raise ValueError("Scenario name is required")
     if not scenario_config.get("steps"):
         raise ValueError("Scenario steps are required")
+    
     steps_count = len(scenario_config.get("steps", []))
     description = scenario_config.get("description", "No description provided")
+    
     print(f"Scenario: {scenario_config['name']}")
     print(f"Steps: {steps_count}")
     print(f"Description: {description}")
+    
     test_config = TestConfig(**test_config_data)
-    agent = LocustTestAgent(workspace_dir=r"${WORKSPACE_DIR}")
+    agent = LocustTestAgent(workspace_dir="${WORKSPACE_DIR}")
     script_path = agent.generate_script(scenario_config, test_config)
+    
     print(f"Script generated successfully: {script_path}")
+    
     metadata = {
         "script_path": script_path,
         "scenario_name": scenario_config["name"],
@@ -189,19 +207,30 @@ try:
         "description": description,
         "success": True
     }
-    with open(r"${WORKSPACE_DIR}\\generation_metadata.json", "w") as f:
+    
+    metadata_file = os.path.join("${WORKSPACE_DIR}", "generation_metadata.json")
+    with open(metadata_file, "w") as f:
         json.dump(metadata, f, indent=2)
+        
 except Exception as e:
     print(f"Error: {str(e)}")
     metadata = {
         "success": False,
         "error": str(e)
     }
-    with open(r"${WORKSPACE_DIR}\\generation_metadata.json", "w") as f:
+    metadata_file = os.path.join("${WORKSPACE_DIR}", "generation_metadata.json")
+    with open(metadata_file, "w") as f:
         json.dump(metadata, f, indent=2)
     sys.exit(1)
-'''
+"""
                     writeFile file: "${WORKSPACE_DIR}\\generate_script.py", text: pyScript
+                    
+                    // Install the package in development mode
+                    bat """
+                        call venv\\Scripts\\activate.bat
+                        cd ${WORKSPACE}
+                        pip install -e .
+                    """
                     
                     // Run the Python script
                     bat """
