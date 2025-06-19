@@ -275,12 +275,37 @@ print(f'Test completed: Success={result.success}')
                     def resultsText = readFile file: "${WORKSPACE_DIR}\\test_results.json"
                     def results = new groovy.json.JsonSlurper().parseText(resultsText)
                     
-                    env.TEST_SUCCESS = results.workflow_success
-                    env.TOTAL_REQUESTS = results.test_result.total_requests
-                    env.FAILED_REQUESTS = results.test_result.failed_requests
-                    env.AVG_RESPONSE_TIME = results.test_result.avg_response_time
-                    env.REQUESTS_PER_SEC = results.test_result.requests_per_sec
-                    env.EXECUTION_TIME = results.test_result.execution_time
+                    // Convert to serializable format immediately
+                    def serializableResults = [
+                        workflow_success: results.workflow_success?.toString(),
+                        scenario_name: results.scenario_name?.toString(),
+                        script_path: results.script_path?.toString(),
+                        test_result: results.test_result ? [
+                            execution_time: results.test_result.execution_time?.toString(),
+                            total_requests: results.test_result.total_requests?.toString(),
+                            failed_requests: results.test_result.failed_requests?.toString(),
+                            avg_response_time: results.test_result.avg_response_time?.toString(),
+                            requests_per_sec: results.test_result.requests_per_sec?.toString(),
+                            html_report_path: results.test_result.html_report_path?.toString(),
+                            csv_report_path: results.test_result.csv_report_path?.toString()
+                        ] : [:],
+                        llm_analysis: results.llm_analysis ? [
+                            performance_grade: results.llm_analysis.performance_grade?.toString(),
+                            summary: results.llm_analysis.summary?.toString(),
+                            key_insights: results.llm_analysis.key_insights?.collect { it.toString() } ?: [],
+                            recommendations: results.llm_analysis.recommendations?.collect { it.toString() } ?: []
+                        ] : [:]
+                    ]
+                    
+                    env.TEST_SUCCESS = serializableResults.workflow_success
+                    env.TOTAL_REQUESTS = serializableResults.test_result.total_requests
+                    env.FAILED_REQUESTS = serializableResults.test_result.failed_requests
+                    env.AVG_RESPONSE_TIME = serializableResults.test_result.avg_response_time
+                    env.REQUESTS_PER_SEC = serializableResults.test_result.requests_per_sec
+                    env.EXECUTION_TIME = serializableResults.test_result.execution_time
+                    
+                    // Store serializable results for later use
+                    env.SERIALIZABLE_TEST_RESULTS = groovy.json.JsonOutput.toJson(serializableResults)
                     
                     echo "Test execution completed"
                     echo "Success: ${env.TEST_SUCCESS}"
@@ -382,14 +407,36 @@ print('LLM analysis completed')
                     def resultsText = readFile file: "test_workspace\\test_results.json"
                     def results = new groovy.json.JsonSlurper().parseText(resultsText)
                     
+                    // Convert to serializable format immediately
+                    def serializableResults = [
+                        workflow_success: results.workflow_success?.toString(),
+                        scenario_name: results.scenario_name?.toString(),
+                        script_path: results.script_path?.toString(),
+                        test_result: results.test_result ? [
+                            execution_time: results.test_result.execution_time?.toString(),
+                            total_requests: results.test_result.total_requests?.toString(),
+                            failed_requests: results.test_result.failed_requests?.toString(),
+                            avg_response_time: results.test_result.avg_response_time?.toString(),
+                            requests_per_sec: results.test_result.requests_per_sec?.toString(),
+                            html_report_path: results.test_result.html_report_path?.toString(),
+                            csv_report_path: results.test_result.csv_report_path?.toString()
+                        ] : [:],
+                        llm_analysis: results.llm_analysis ? [
+                            performance_grade: results.llm_analysis.performance_grade?.toString(),
+                            summary: results.llm_analysis.summary?.toString(),
+                            key_insights: results.llm_analysis.key_insights?.collect { it.toString() } ?: [],
+                            recommendations: results.llm_analysis.recommendations?.collect { it.toString() } ?: []
+                        ] : [:]
+                    ]
+                    
                     echo "Test Results Analysis:"
-                    echo "  Success: ${results.workflow_success}"
-                    echo "  Scenario: ${results.scenario_name}"
+                    echo "  Success: ${serializableResults.workflow_success}"
+                    echo "  Scenario: ${serializableResults.scenario_name}"
                     echo "  Script: ${env.SELECTED_SCRIPT}"
                     echo "  Test Run ID: ${TEST_RUN_ID}"
                     
-                    if (results.test_result) {
-                        def testResult = results.test_result
+                    if (serializableResults.test_result) {
+                        def testResult = serializableResults.test_result
                         echo "  Execution Time: ${testResult.execution_time}s"
                         echo "  Total Requests: ${testResult.total_requests}"
                         echo "  Failed Requests: ${testResult.failed_requests}"
@@ -397,8 +444,8 @@ print('LLM analysis completed')
                         echo "  Requests/sec: ${testResult.requests_per_sec}"
                         
                         // Calculate success rate
-                        def successRate = testResult.total_requests > 0 ? 
-                            ((testResult.total_requests - testResult.failed_requests) / testResult.total_requests * 100) : 0
+                        def successRate = testResult.total_requests.toInteger() > 0 ? 
+                            ((testResult.total_requests.toInteger() - testResult.failed_requests.toInteger()) / testResult.total_requests.toInteger() * 100) : 0
                         echo "  Success Rate: ${successRate}%"
                         
                         // Store calculated values in environment
@@ -407,7 +454,7 @@ print('LLM analysis completed')
                         // Performance threshold validation
                         def performanceIssues = []
                         
-                        if (testResult.avg_response_time > MAX_RESPONSE_TIME_MS.toInteger()) {
+                        if (testResult.avg_response_time.toInteger() > MAX_RESPONSE_TIME_MS.toInteger()) {
                             performanceIssues.add("Average response time (${testResult.avg_response_time}ms) exceeds threshold (${MAX_RESPONSE_TIME_MS}ms)")
                         }
                         
@@ -415,7 +462,7 @@ print('LLM analysis completed')
                             performanceIssues.add("Success rate (${successRate}%) below threshold (${MIN_SUCCESS_RATE_PCT}%)")
                         }
                         
-                        if (testResult.requests_per_sec < MIN_REQUESTS_PER_SEC.toInteger()) {
+                        if (testResult.requests_per_sec.toDouble() < MIN_REQUESTS_PER_SEC.toInteger()) {
                             performanceIssues.add("Requests per second (${testResult.requests_per_sec}) below threshold (${MIN_REQUESTS_PER_SEC})")
                         }
                         
@@ -433,8 +480,8 @@ print('LLM analysis completed')
                     }
                     
                     // LLM analysis summary
-                    if (params.USE_LLM_ANALYSIS && results.llm_analysis) {
-                        def llmAnalysis = results.llm_analysis
+                    if (params.USE_LLM_ANALYSIS && serializableResults.llm_analysis) {
+                        def llmAnalysis = serializableResults.llm_analysis
                         echo "LLM Analysis:"
                         echo "  Performance Grade: ${llmAnalysis.performance_grade}"
                         echo "  Summary: ${llmAnalysis.summary}"

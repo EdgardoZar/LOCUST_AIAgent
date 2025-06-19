@@ -105,16 +105,48 @@ pipeline {
                         error "SCENARIO_JSON is required"
                     }
                     
-                    // Validate JSON format
+                    // Validate JSON format and convert to serializable format
                     try {
                         def scenarioConfig = new groovy.json.JsonSlurper().parseText(params.SCENARIO_JSON)
+                        // Convert to serializable format immediately
+                        def serializableConfig = [
+                            name: scenarioConfig.name?.toString(),
+                            description: scenarioConfig.description?.toString(),
+                            steps: scenarioConfig.steps?.collect { step ->
+                                [
+                                    id: step.id?.toString(),
+                                    type: step.type?.toString(),
+                                    config: step.config ? [
+                                        name: step.config.name?.toString(),
+                                        method: step.config.method?.toString(),
+                                        url: step.config.url?.toString(),
+                                        headers: step.config.headers?.collectEntries { k, v -> [k.toString(), v.toString()] } ?: [:],
+                                        params: step.config.params?.collectEntries { k, v -> [k.toString(), v.toString()] } ?: [:],
+                                        body: step.config.body,
+                                        extract: step.config.extract?.collectEntries { k, v -> [k.toString(), v.toString()] } ?: [:],
+                                        assertions: step.config.assertions?.collect { assertion ->
+                                            [
+                                                type: assertion.type?.toString(),
+                                                value: assertion.value?.toString(),
+                                                path: assertion.path?.toString()
+                                            ]
+                                        } ?: [],
+                                        wait: step.config.wait?.toString()
+                                    ] : [:]
+                                ]
+                            } ?: []
+                        ]
+                        
                         echo "JSON validation successful"
-                        echo "Scenario name: ${scenarioConfig.name}"
-                        echo "Steps count: ${scenarioConfig.steps?.size() ?: 0}"
+                        echo "Scenario name: ${serializableConfig.name}"
+                        echo "Steps count: ${serializableConfig.steps?.size() ?: 0}"
                         
                         // Store scenario info in environment
-                        env.SCENARIO_STEPS_COUNT = scenarioConfig.steps?.size() ?: 0
-                        env.SCENARIO_DESCRIPTION = scenarioConfig.description ?: "No description provided"
+                        env.SCENARIO_STEPS_COUNT = serializableConfig.steps?.size() ?: 0
+                        env.SCENARIO_DESCRIPTION = serializableConfig.description ?: "No description provided"
+                        
+                        // Store serializable config for later use
+                        env.SERIALIZABLE_SCENARIO_CONFIG = groovy.json.JsonOutput.toJson(serializableConfig)
                         
                     } catch (Exception e) {
                         error "Invalid JSON format: ${e.message}"
@@ -130,8 +162,8 @@ pipeline {
                     echo "Environment: ${params.ENVIRONMENT}"
                     echo "Target Host: ${params.TARGET_HOST}"
                     
-                    // Parse scenario JSON
-                    def scenarioConfig = new groovy.json.JsonSlurper().parseText(params.SCENARIO_JSON)
+                    // Use the serializable config from previous stage
+                    def scenarioConfig = new groovy.json.JsonSlurper().parseText(env.SERIALIZABLE_SCENARIO_CONFIG)
                     
                     // Create test configuration
                     def testConfig = [
