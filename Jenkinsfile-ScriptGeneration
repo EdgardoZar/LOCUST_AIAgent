@@ -205,10 +205,10 @@ except Exception as e:
                     
                     // Run the Python script
                     bat """
-                        call venv\Scripts\activate.bat
+                        call venv\\Scripts\\activate.bat
                         cd ${WORKSPACE}
                         set PYTHONPATH=%PYTHONPATH%;${WORKSPACE}
-                        python ${WORKSPACE_DIR}\generate_script.py
+                        python ${WORKSPACE_DIR}\\generate_script.py
                     """
                     
                     // Read generation metadata
