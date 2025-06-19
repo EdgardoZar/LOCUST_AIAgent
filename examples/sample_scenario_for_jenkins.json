@@ -1,0 +1,88 @@
+{
+  "name": "Rick and Morty API Test",
+  "description": "Comprehensive test of Rick and Morty API endpoints",
+  "steps": [
+    {
+      "id": 1,
+      "type": "api_call",
+      "config": {
+        "name": "Get Characters Page 1",
+        "method": "GET",
+        "url": "/api/character?page=1",
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
+        "params": {},
+        "body": null,
+        "extract": {
+          "total_pages": "info.pages",
+          "total_count": "info.count"
+        },
+        "assertions": [
+          {"type": "status_code", "value": 200},
+          {"type": "json_path", "path": "$.info", "value": "exists"}
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "type": "wait",
+      "config": {
+        "wait": 1
+      }
+    },
+    {
+      "id": 3,
+      "type": "api_call",
+      "config": {
+        "name": "Get Specific Character",
+        "method": "GET",
+        "url": "/api/character/1",
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
+        "params": {},
+        "body": null,
+        "extract": {
+          "character_name": "name",
+          "character_status": "status"
+        },
+        "assertions": [
+          {"type": "status_code", "value": 200},
+          {"type": "json_path", "path": "$.name", "value": "Rick Sanchez"}
+        ]
+      }
+    },
+    {
+      "id": 4,
+      "type": "wait",
+      "config": {
+        "wait": 1
+      }
+    },
+    {
+      "id": 5,
+      "type": "api_call",
+      "config": {
+        "name": "Search Characters",
+        "method": "GET",
+        "url": "/api/character?name=rick",
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
+        "params": {},
+        "body": null,
+        "extract": {
+          "search_results": "results"
+        },
+        "assertions": [
+          {"type": "status_code", "value": 200},
+          {"type": "json_path", "path": "$.results", "value": "exists"}
+        ]
+      }
+    }
+  ]
+} 

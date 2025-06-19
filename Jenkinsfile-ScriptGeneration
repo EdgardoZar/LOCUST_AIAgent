@@ -1,0 +1,226 @@
+pipeline {
+    agent any
+    
+    parameters {
+        // Script generation parameters
+        string(name: 'SCENARIO_NAME', defaultValue: '', description: 'Name of the test scenario')
+        text(name: 'SCENARIO_JSON', defaultValue: '', description: 'JSON configuration for the scenario')
+        string(name: 'TARGET_HOST', defaultValue: 'https://api.example.com', description: 'Target host URL for testing')
+        string(name: 'API_TOKEN', defaultValue: '', description: 'API token for authentication (optional)')
+        choice(name: 'ENVIRONMENT', choices: ['dev', 'staging', 'prod'], description: 'Target environment')
+        
+        // Test configuration (for script generation)
+        string(name: 'USERS', defaultValue: '10', description: 'Number of concurrent users')
+        string(name: 'SPAWN_RATE', defaultValue: '2', description: 'User spawn rate per second')
+        string(name: 'RUN_TIME', defaultValue: '5m', description: 'Test duration (e.g., 5m, 10m, 1h)')
+        string(name: 'MIN_WAIT', defaultValue: '1000', description: 'Minimum wait time between requests (ms)')
+        string(name: 'MAX_WAIT', defaultValue: '5000', description: 'Maximum wait time between requests (ms)')
+        
+        // Advanced options
+        booleanParam(name: 'GENERATE_HTML_REPORT', defaultValue: true, description: 'Generate HTML test report')
+        booleanParam(name: 'GENERATE_CSV_REPORT', defaultValue: true, description: 'Generate CSV test report')
+        string(name: 'LOG_LEVEL', defaultValue: 'INFO', description: 'Logging level (DEBUG, INFO, WARNING, ERROR)')
+    }
+    
+    environment {
+        PYTHON_VERSION = '3.9'
+        WORKSPACE_DIR = "${WORKSPACE}\\test_workspace"
+        REPORTS_DIR = "${WORKSPACE}\\test_reports"
+        SCRIPTS_DIR = "${WORKSPACE}\\generated_scripts"
+        TIMESTAMP = "${new Date().format('yyyyMMdd_HHmmss')}"
+        
+        // Git configuration
+        GIT_SCRIPTS_BRANCH = 'generated-scripts'
+        GIT_SCRIPTS_FOLDER = 'test_workspace/generated_scripts'
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+                echo "Checked out code from ${env.BRANCH_NAME}"
+                echo "Script Generation Pipeline"
+                echo "Scenario Name: ${params.SCENARIO_NAME}"
+            }
+        }
+        
+        stage('Setup Environment') {
+            steps {
+                script {
+                    // Create directories
+                    bat "if not exist \"${WORKSPACE_DIR}\" mkdir \"${WORKSPACE_DIR}\""
+                    bat "if not exist \"${REPORTS_DIR}\" mkdir \"${REPORTS_DIR}\""
+                    bat "if not exist \"${SCRIPTS_DIR}\" mkdir \"${SCRIPTS_DIR}\""
+                    
+                    // Setup Python virtual environment
+                    bat """
+                        if not exist venv (
+                            python -m venv venv
+                        )
+                        call venv\\Scripts\\activate.bat
+                        pip install --upgrade pip
+                        pip install -r requirements.txt
+                        pip install -e .
+                    """
+                }
+            }
+        }
+        
+        stage('Validate Input') {
+            steps {
+                script {
+                    if (!params.SCENARIO_NAME?.trim()) {
+                        error "SCENARIO_NAME is required"
+                    }
+                    if (!params.SCENARIO_JSON?.trim()) {
+                        error "SCENARIO_JSON is required"
+                    }
+                    
+                    // Validate JSON format
+                    try {
+                        def scenarioConfig = new groovy.json.JsonSlurper().parseText(params.SCENARIO_JSON)
+                        echo "JSON validation successful"
+                        echo "Scenario name: ${scenarioConfig.name}"
+                        echo "Steps count: ${scenarioConfig.steps?.size() ?: 0}"
+                    } catch (Exception e) {
+                        error "Invalid JSON format: ${e.message}"
+                    }
+                }
+            }
+        }
+        
+        stage('Generate Script') {
+            steps {
+                script {
+                    echo "Generating script from scenario configuration..."
+                    
+                    // Parse scenario JSON
+                    def scenarioConfig = new groovy.json.JsonSlurper().parseText(params.SCENARIO_JSON)
+                    
+                    // Create test configuration
+                    def testConfig = [
+                        scenario_name: params.SCENARIO_NAME,
+                        host: params.TARGET_HOST,
+                        users: params.USERS,
+                        spawn_rate: params.SPAWN_RATE,
+                        run_time: params.RUN_TIME,
+                        min_wait: params.MIN_WAIT,
+                        max_wait: params.MAX_WAIT,
+                        assertions: [
+                            [type: "status_code", value: 200]
+                        ],
+                        extract_variables: [:],
+                        headers: [
+                            "Content-Type": "application/json",
+                            "User-Agent": "Jenkins-Locust-AI-Agent/1.0"
+                        ],
+                        params: [:],
+                        body: [:],
+                        output_dir: REPORTS_DIR,
+                        generate_csv: params.GENERATE_CSV_REPORT,
+                        generate_html: params.GENERATE_HTML_REPORT,
+                        log_level: params.LOG_LEVEL
+                    ]
+                    
+                    // Save configurations
+                    writeFile file: "${WORKSPACE_DIR}\\scenario_config.json", text: groovy.json.JsonOutput.toJson(scenarioConfig)
+                    writeFile file: "${WORKSPACE_DIR}\\test_config.json", text: groovy.json.JsonOutput.toJson(testConfig)
+                    
+                    // Generate script using AI Agent
+                    bat """
+                        call venv\\Scripts\\activate.bat
+                        cd ${WORKSPACE}
+                        set PYTHONPATH=%PYTHONPATH%;${WORKSPACE}
+                        
+                        python -c "
+import sys
+sys.path.insert(0, '.')
+from Locust_AI_Agent.core.test_agent import LocustTestAgent, TestConfig
+import json
+
+# Load configurations
+with open('${WORKSPACE_DIR}\\scenario_config.json', 'r') as f:
+    scenario_config = json.load(f)
+with open('${WORKSPACE_DIR}\\test_config.json', 'r') as f:
+    test_config_data = json.load(f)
+
+# Create test config
+test_config = TestConfig(**test_config_data)
+
+# Generate script
+agent = LocustTestAgent(workspace_dir='${WORKSPACE_DIR}')
+script_path = agent.generate_script(scenario_config, test_config)
+print(f'Script generated: {script_path}')
+"
+                    """
+                    
+                    echo "Script generation completed successfully!"
+                }
+            }
+        }
+        
+        stage('Save to Git') {
+            steps {
+                script {
+                    echo "Saving generated script to Git..."
+                    
+                    // Configure Git
+                    bat """
+                        git config user.email "jenkins@example.com"
+                        git config user.name "Jenkins Pipeline"
+                    """
+                    
+                    // Create scripts branch if it doesn't exist
+                    bat """
+                        git checkout -b ${GIT_SCRIPTS_BRANCH} 2>nul || git checkout ${GIT_SCRIPTS_BRANCH}
+                    """
+                    
+                    // Add generated script
+                    bat """
+                        git add ${SCRIPTS_DIR}\\*.py
+                        git commit -m "Generated script: ${params.SCENARIO_NAME} - ${TIMESTAMP}" || echo "No changes to commit"
+                    """
+                    
+                    // Push to remote
+                    bat """
+                        git push origin ${GIT_SCRIPTS_BRANCH} || echo "Push failed or no changes"
+                    """
+                    
+                    // Return to main branch
+                    bat "git checkout main"
+                    
+                    echo "Script saved to Git branch: ${GIT_SCRIPTS_BRANCH}"
+                }
+            }
+        }
+        
+        stage('Archive Script') {
+            steps {
+                script {
+                    // Archive the generated script
+                    archiveArtifacts artifacts: "${SCRIPTS_DIR}\\*.py", fingerprint: true
+                    echo "Script archived successfully"
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            script {
+                echo "Script Generation Pipeline completed with result: ${currentBuild.result}"
+                echo "Build URL: ${env.BUILD_URL}"
+                echo "Generated script saved to Git branch: ${GIT_SCRIPTS_BRANCH}"
+            }
+        }
+        
+        success {
+            echo "Script generated and saved to Git successfully!"
+            echo "You can now use this script in the Test Execution Pipeline"
+        }
+        
+        failure {
+            echo "Script generation failed! Check the console output for error details."
+        }
+    }
+} 
