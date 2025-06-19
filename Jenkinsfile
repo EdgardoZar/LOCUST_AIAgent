@@ -128,11 +128,11 @@ pipeline {
                                     params: [:],
                                     body: null,
                                     extract: [
-                                        status: "$.status"
+                                        status: "\$.status"
                                     ],
                                     assertions: [
                                         [type: "status_code", value: 200],
-                                        [type: "json_path", path: "$.status", value: "healthy"]
+                                        [type: "json_path", path: "\$.status", value: "healthy"]
                                     ]
                                 ]
                             ]
