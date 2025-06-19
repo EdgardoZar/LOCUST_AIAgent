@@ -28,8 +28,8 @@ pipeline {
     
     environment {
         PYTHON_VERSION = '3.9'
-        WORKSPACE_DIR = "${WORKSPACE}/test_workspace"
-        REPORTS_DIR = "${WORKSPACE}/test_reports"
+        WORKSPACE_DIR = "${WORKSPACE}\\test_workspace"
+        REPORTS_DIR = "${WORKSPACE}\\test_reports"
         TIMESTAMP = "${new Date().format('yyyyMMdd_HHmmss')}"
         
         // Test configuration from parameters
@@ -65,14 +65,14 @@ pipeline {
             steps {
                 script {
                     // Create workspace directories
-                    sh "mkdir -p ${WORKSPACE_DIR}"
-                    sh "mkdir -p ${REPORTS_DIR}"
+                    bat "if not exist ${WORKSPACE_DIR} mkdir ${WORKSPACE_DIR}"
+                    bat "if not exist ${REPORTS_DIR} mkdir ${REPORTS_DIR}"
                     
                     // Setup Python environment
-                    sh """
+                    bat """
                         python -m venv venv
-                        source venv/bin/activate
-                        pip install --upgrade pip
+                        call venv\\Scripts\\activate.bat
+                        python -m pip install --upgrade pip
                         pip install -r requirements.txt
                         pip install -e .
                     """
@@ -144,7 +144,7 @@ pipeline {
                         scenarioConfig.steps[2].config.headers["Authorization"] = "Bearer ${params.API_TOKEN}"
                     }
                     
-                    writeJSON file: "${WORKSPACE_DIR}/scenario_config.json", json: scenarioConfig
+                    writeJSON file: "${WORKSPACE_DIR}\\scenario_config.json", json: scenarioConfig
                     
                     // Create test configuration
                     def testConfig = [
@@ -171,7 +171,7 @@ pipeline {
                         log_level: params.LOG_LEVEL
                     ]
                     
-                    writeJSON file: "${WORKSPACE_DIR}/test_config.json", json: testConfig
+                    writeJSON file: "${WORKSPACE_DIR}\\test_config.json", json: testConfig
                     
                     echo "Test configuration created:"
                     echo "  Scenario: ${testConfig.scenario_name}"
@@ -186,27 +186,27 @@ pipeline {
             steps {
                 script {
                     // Activate virtual environment and run AI agent
-                    sh """
-                        source venv/bin/activate
+                    bat """
+                        call venv\\Scripts\\activate.bat
                         cd ${WORKSPACE}
                         
-                        # Add current directory to Python path
-                        export PYTHONPATH="${PYTHONPATH}:${WORKSPACE}"
+                        rem Add current directory to Python path
+                        set PYTHONPATH=%PYTHONPATH%;${WORKSPACE}
                         
-                        # Run the AI agent
+                        rem Run the AI agent
                         python run_example.py
                     """
                     
                     // Run with LLM analysis if enabled
                     if (params.USE_LLM_ANALYSIS) {
                         withCredentials([string(credentialsId: 'openai-api-key', variable: 'OPENAI_API_KEY')]) {
-                            sh """
-                                source venv/bin/activate
+                            bat """
+                                call venv\\Scripts\\activate.bat
                                 cd ${WORKSPACE}
-                                export PYTHONPATH="${PYTHONPATH}:${WORKSPACE}"
-                                export OPENAI_API_KEY="${OPENAI_API_KEY}"
+                                set PYTHONPATH=%PYTHONPATH%;${WORKSPACE}
+                                set OPENAI_API_KEY=${OPENAI_API_KEY}
                                 
-                                # Run with LLM analysis
+                                rem Run with LLM analysis
                                 python -c "
 import sys
 sys.path.insert(0, '.')
@@ -215,9 +215,9 @@ from Locust_AI_Agent.analysis.llm_analyzer import LLMAnalyzer
 import json
 
 # Load configurations
-with open('${WORKSPACE_DIR}/scenario_config.json', 'r') as f:
+with open('${WORKSPACE_DIR}\\scenario_config.json', 'r') as f:
     scenario_config = json.load(f)
-with open('${WORKSPACE_DIR}/test_config.json', 'r') as f:
+with open('${WORKSPACE_DIR}\\test_config.json', 'r') as f:
     test_config_data = json.load(f)
 
 # Create test config
@@ -236,7 +236,7 @@ llm_analysis = llm_analyzer.analyze_test_results(
 workflow_result['llm_analysis'] = llm_analysis
 
 # Save results
-with open('${WORKSPACE_DIR}/test_results_with_llm.json', 'w') as f:
+with open('${WORKSPACE_DIR}\\test_results_with_llm.json', 'w') as f:
     json.dump(workflow_result, f, indent=2)
 "
                             """
@@ -250,23 +250,23 @@ with open('${WORKSPACE_DIR}/test_results_with_llm.json', 'w') as f:
             steps {
                 script {
                     // Archive test results and reports
-                    archiveArtifacts artifacts: "${WORKSPACE_DIR}/test_results.json", fingerprint: true
+                    archiveArtifacts artifacts: "${WORKSPACE_DIR}\\test_results.json", fingerprint: true
                     
                     if (params.USE_LLM_ANALYSIS) {
-                        archiveArtifacts artifacts: "${WORKSPACE_DIR}/test_results_with_llm.json", fingerprint: true
+                        archiveArtifacts artifacts: "${WORKSPACE_DIR}\\test_results_with_llm.json", fingerprint: true
                     }
                     
                     // Archive generated reports
                     if (params.GENERATE_HTML_REPORT) {
-                        archiveArtifacts artifacts: "${REPORTS_DIR}/**/*.html", fingerprint: true
+                        archiveArtifacts artifacts: "${REPORTS_DIR}\\**\\*.html", fingerprint: true
                     }
                     
                     if (params.GENERATE_CSV_REPORT) {
-                        archiveArtifacts artifacts: "${REPORTS_DIR}/**/*.csv", fingerprint: true
+                        archiveArtifacts artifacts: "${REPORTS_DIR}\\**\\*.csv", fingerprint: true
                     }
                     
                     // Archive generated scripts
-                    archiveArtifacts artifacts: "${WORKSPACE_DIR}/generated_scripts/**/*", fingerprint: true
+                    archiveArtifacts artifacts: "${WORKSPACE_DIR}\\generated_scripts\\**\\*", fingerprint: true
                 }
             }
         }
@@ -275,7 +275,7 @@ with open('${WORKSPACE_DIR}/test_results_with_llm.json', 'w') as f:
             steps {
                 script {
                     // Load and analyze test results
-                    def results = readJSON file: "${WORKSPACE_DIR}/test_results.json"
+                    def results = readJSON file: "${WORKSPACE_DIR}\\test_results.json"
                     
                     echo "Test Results Analysis:"
                     echo "  Success: ${results.workflow_success}"
@@ -352,7 +352,7 @@ with open('${WORKSPACE_DIR}/test_results_with_llm.json', 'w') as f:
             steps {
                 script {
                     // Find HTML report file
-                    def htmlFiles = findFiles(glob: "${REPORTS_DIR}/**/*.html")
+                    def htmlFiles = findFiles(glob: "${REPORTS_DIR}\\**\\*.html")
                     if (htmlFiles.length > 0) {
                         publishHTML([
                             allowMissing: false,
