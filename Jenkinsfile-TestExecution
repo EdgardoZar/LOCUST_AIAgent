@@ -216,141 +216,146 @@ pipeline {
                         git checkout main
                     """
                     
-                    // Run the test
-                    bat """
-                        call venv\\Scripts\\activate.bat
-                        cd ${WORKSPACE}
-                        set PYTHONPATH=%PYTHONPATH%;${WORKSPACE}
-                        
-                        python -c "
+                    // Write the Python script to a file
+                    def executeTestScript = '''
 import sys
-sys.path.insert(0, '.')
+sys.path.insert(0, ".")
 from Locust_AI_Agent.core.test_agent import LocustTestAgent, TestConfig
 import json
 
 # Load test config
-with open('${WORKSPACE_DIR}\\test_config.json', 'r') as f:
+with open(r"${WORKSPACE_DIR}\\test_config.json", "r") as f:
     test_config_data = json.load(f)
 
 # Create test config
 test_config = TestConfig(**test_config_data)
 
 # Run test
-agent = LocustTestAgent(workspace_dir='${WORKSPACE_DIR}')
-script_path = '${SCRIPTS_DIR}\\${env.SELECTED_SCRIPT}'
+agent = LocustTestAgent(workspace_dir=r"${WORKSPACE_DIR}")
+script_path = r"${SCRIPTS_DIR}\\${env.SELECTED_SCRIPT}"
 result = agent.execute_test(script_path, test_config)
 
 # Save results
 workflow_result = {
-    'workflow_success': result.success,
-    'scenario_name': result.scenario_name,
-    'script_path': result.script_path,
-    'html_report_path': result.html_report_path,
-    'csv_report_path': result.csv_report_path,
-    'test_metadata': {
-        'test_run_id': '${TEST_RUN_ID}',
-        'environment': '${TEST_ENVIRONMENT}',
-        'build_number': '${env.BUILD_NUMBER}',
-        'job_name': '${env.JOB_NAME}',
-        'description': '${params.TEST_DESCRIPTION}',
-        'tags': '${params.TEST_TAGS}'
+    "workflow_success": result.success,
+    "scenario_name": result.scenario_name,
+    "script_path": result.script_path,
+    "html_report_path": result.html_report_path,
+    "csv_report_path": result.csv_report_path,
+    "test_metadata": {
+        "test_run_id": "${TEST_RUN_ID}",
+        "environment": "${TEST_ENVIRONMENT}",
+        "build_number": "${env.BUILD_NUMBER}",
+        "job_name": "${env.JOB_NAME}",
+        "description": "${params.TEST_DESCRIPTION}",
+        "tags": "${params.TEST_TAGS}"
     },
-    'test_result': {
-        'execution_time': result.execution_time,
-        'total_requests': result.total_requests,
-        'failed_requests': result.failed_requests,
-        'avg_response_time': result.avg_response_time,
-        'requests_per_sec': result.requests_per_sec
+    "test_result": {
+        "execution_time": result.execution_time,
+        "total_requests": result.total_requests,
+        "failed_requests": result.failed_requests,
+        "avg_response_time": result.avg_response_time,
+        "requests_per_sec": result.requests_per_sec
     }
 }
 
-with open('${WORKSPACE_DIR}\\test_results.json', 'w') as f:
+with open(r"${WORKSPACE_DIR}\\test_results.json", "w") as f:
     json.dump(workflow_result, f, indent=2)
 
-print(f'Test completed: Success={result.success}')
-"
+print(f"Test completed: Success={result.success}")
+'''
+                    writeFile file: "${WORKSPACE_DIR}\\execute_test.py", text: executeTestScript
+                    
+                    bat """
+                        call venv\\Scripts\\activate.bat
+                        cd ${WORKSPACE}
+                        set PYTHONPATH=%PYTHONPATH%;${WORKSPACE}
+                        python ${WORKSPACE_DIR}\\execute_test.py
                     """
                     
                     // Store test results in environment
                     def resultsText = readFile file: "${WORKSPACE_DIR}\\test_results.json"
                     
                     // Parse results using Python to avoid serialization issues
+                    def processResultsScript = '''
+import sys
+import json
+sys.path.insert(0, ".")
+
+try:
+    # Load test results
+    with open(r"${WORKSPACE_DIR}\\test_results.json", "r") as f:
+        results = json.load(f)
+    
+    # Extract and validate data
+    workflow_success = results.get("workflow_success", False)
+    scenario_name = results.get("scenario_name", "Unknown")
+    script_path = results.get("script_path", "Unknown")
+    
+    test_result = results.get("test_result", {})
+    total_requests = test_result.get("total_requests", 0)
+    failed_requests = test_result.get("failed_requests", 0)
+    avg_response_time = test_result.get("avg_response_time", 0)
+    requests_per_sec = test_result.get("requests_per_sec", 0)
+    execution_time = test_result.get("execution_time", 0)
+    html_report_path = test_result.get("html_report_path", "")
+    csv_report_path = test_result.get("csv_report_path", "")
+    
+    llm_analysis = results.get("llm_analysis", {})
+    performance_grade = llm_analysis.get("performance_grade", "N/A")
+    summary = llm_analysis.get("summary", "N/A")
+    key_insights = llm_analysis.get("key_insights", [])
+    recommendations = llm_analysis.get("recommendations", [])
+    
+    # Create metadata for Jenkins
+    metadata = {
+        "workflow_success": workflow_success,
+        "scenario_name": scenario_name,
+        "script_path": script_path,
+        "test_result": {
+            "execution_time": execution_time,
+            "total_requests": total_requests,
+            "failed_requests": failed_requests,
+            "avg_response_time": avg_response_time,
+            "requests_per_sec": requests_per_sec
+        },
+        "llm_analysis": {
+            "performance_grade": performance_grade,
+            "summary": summary,
+            "key_insights": key_insights,
+            "recommendations": recommendations
+        },
+        "success": True
+    }
+    
+    with open(r"${WORKSPACE_DIR}\\test_metadata.json", "w") as f:
+        json.dump(metadata, f, indent=2)
+    
+    print(f"Test results processed successfully")
+    print(f"Success: {workflow_success}")
+    print(f"Total Requests: {total_requests}")
+    print(f"Failed Requests: {failed_requests}")
+    print(f"Avg Response Time: {avg_response_time}ms")
+    print(f"Requests/sec: {requests_per_sec}")
+    
+except Exception as e:
+    print(f"Error processing test results: {str(e)}")
+    metadata = {
+        "success": False,
+        "error": str(e)
+    }
+    with open(r"${WORKSPACE_DIR}\\test_metadata.json", "w") as f:
+        json.dump(metadata, f, indent=2)
+    sys.exit(1)
+'''
+                    writeFile file: "${WORKSPACE_DIR}\\process_results.py", text: processResultsScript
+                    
+                    // Parse results using Python to avoid serialization issues
                     bat """
                         call venv\\Scripts\\activate.bat
                         cd ${WORKSPACE}
                         set PYTHONPATH=%PYTHONPATH%;${WORKSPACE}
-                        
-                        python -c "
-import sys
-import json
-sys.path.insert(0, '.')
-
-try:
-    # Load test results
-    with open('${WORKSPACE_DIR}\\test_results.json', 'r') as f:
-        results = json.load(f)
-    
-    # Extract and validate data
-    workflow_success = results.get('workflow_success', False)
-    scenario_name = results.get('scenario_name', 'Unknown')
-    script_path = results.get('script_path', 'Unknown')
-    
-    test_result = results.get('test_result', {})
-    total_requests = test_result.get('total_requests', 0)
-    failed_requests = test_result.get('failed_requests', 0)
-    avg_response_time = test_result.get('avg_response_time', 0)
-    requests_per_sec = test_result.get('requests_per_sec', 0)
-    execution_time = test_result.get('execution_time', 0)
-    html_report_path = test_result.get('html_report_path', '')
-    csv_report_path = test_result.get('csv_report_path', '')
-    
-    llm_analysis = results.get('llm_analysis', {})
-    performance_grade = llm_analysis.get('performance_grade', 'N/A')
-    summary = llm_analysis.get('summary', 'N/A')
-    key_insights = llm_analysis.get('key_insights', [])
-    recommendations = llm_analysis.get('recommendations', [])
-    
-    # Create metadata for Jenkins
-    metadata = {
-        'workflow_success': workflow_success,
-        'scenario_name': scenario_name,
-        'script_path': script_path,
-        'test_result': {
-            'execution_time': execution_time,
-            'total_requests': total_requests,
-            'failed_requests': failed_requests,
-            'avg_response_time': avg_response_time,
-            'requests_per_sec': requests_per_sec
-        },
-        'llm_analysis': {
-            'performance_grade': performance_grade,
-            'summary': summary,
-            'key_insights': key_insights,
-            'recommendations': recommendations
-        },
-        'success': True
-    }
-    
-    with open('${WORKSPACE_DIR}\\test_metadata.json', 'w') as f:
-        json.dump(metadata, f, indent=2)
-    
-    print(f'Test results processed successfully')
-    print(f'Success: {workflow_success}')
-    print(f'Total Requests: {total_requests}')
-    print(f'Failed Requests: {failed_requests}')
-    print(f'Avg Response Time: {avg_response_time}ms')
-    print(f'Requests/sec: {requests_per_sec}')
-    
-except Exception as e:
-    print(f'Error processing test results: {str(e)}')
-    metadata = {
-        'success': False,
-        'error': str(e)
-    }
-    with open('${WORKSPACE_DIR}\\test_metadata.json', 'w') as f:
-        json.dump(metadata, f, indent=2)
-    sys.exit(1)
-"
+                        python ${WORKSPACE_DIR}\\process_results.py
                     """
                     
                     // Read test metadata
@@ -388,38 +393,41 @@ except Exception as e:
                     echo "Test Run ID: ${TEST_RUN_ID}"
                     
                     withCredentials([string(credentialsId: 'openai-api-key', variable: 'OPENAI_API_KEY')]) {
+                        // Write the Python script to a file
+                        def llmAnalysisScript = '''
+import sys
+sys.path.insert(0, ".")
+from Locust_AI_Agent.analysis.llm_analyzer import LLMAnalyzer
+import json
+
+# Load test results
+with open(r"${WORKSPACE_DIR}\\test_results.json", "r") as f:
+    results = json.load(f)
+
+# Run LLM analysis
+llm_analyzer = LLMAnalyzer(api_key="${OPENAI_API_KEY}")
+llm_analysis = llm_analyzer.analyze_test_results(
+    results["test_result"],
+    results.get("html_report_path")
+)
+
+# Add LLM analysis to results
+results["llm_analysis"] = llm_analysis
+
+# Save updated results
+with open(r"${WORKSPACE_DIR}\\test_results_with_llm.json", "w") as f:
+    json.dump(results, f, indent=2)
+
+print("LLM analysis completed")
+'''
+                        writeFile file: "${WORKSPACE_DIR}\\llm_analysis.py", text: llmAnalysisScript
+                        
                         bat """
                             call venv\\Scripts\\activate.bat
                             cd ${WORKSPACE}
                             set PYTHONPATH=%PYTHONPATH%;${WORKSPACE}
                             set OPENAI_API_KEY=${OPENAI_API_KEY}
-                            
-                            python -c "
-import sys
-sys.path.insert(0, '.')
-from Locust_AI_Agent.analysis.llm_analyzer import LLMAnalyzer
-import json
-
-# Load test results
-with open('${WORKSPACE_DIR}\\test_results.json', 'r') as f:
-    results = json.load(f)
-
-# Run LLM analysis
-llm_analyzer = LLMAnalyzer(api_key='${OPENAI_API_KEY}')
-llm_analysis = llm_analyzer.analyze_test_results(
-    results['test_result'],
-    results.get('html_report_path')
-)
-
-# Add LLM analysis to results
-results['llm_analysis'] = llm_analysis
-
-# Save updated results
-with open('${WORKSPACE_DIR}\\test_results_with_llm.json', 'w') as f:
-    json.dump(results, f, indent=2)
-
-print('LLM analysis completed')
-"
+                            python ${WORKSPACE_DIR}\\llm_analysis.py
                         """
                     }
                     
