@@ -1,0 +1,13 @@
+# Core dependencies for Locust AI Agent
+locust==2.37.10
+requests>=2.32.2
+sqlalchemy>=2.0.25
+jsonpath-ng==1.6.0
+python-dateutil==2.8.2
+
+# Optional dependencies for enhanced functionality
+python-dotenv==1.0.0
+
+# Backward compatibility for older Python versions
+dataclasses>=0.6; python_version < "3.7"
+typing-extensions>=4.0.0; python_version < "3.8" 
