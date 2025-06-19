@@ -176,245 +176,86 @@ pipeline {
                     
                     writeFile file: "${WORKSPACE_DIR}\\test_config.json", text: testConfigJson
                     
-                    // Write the Python script to a file with timestamp to avoid caching
-                    def scriptFilename = "generate_script_${BUILD_NUMBER}_${System.currentTimeMillis()}.py"
+                    // Create timestamped script filename to avoid caching issues
+                    def timestamp = System.currentTimeMillis()
+                    def scriptFilename = "generate_script_${env.BUILD_NUMBER}_${timestamp}.py"
+                    
+                    // Create the Python script content
                     def pyScript = """
-# DEBUG: This is the NEW self-contained script - Build ${BUILD_NUMBER}
-# If you see this message, the new script is running correctly
 import sys
 import json
 import os
 import subprocess
 import time
 import logging
-from datetime import datetime
-from typing import Dict, List, Optional, Any
-from pathlib import Path
-from dataclasses import dataclass, asdict
 
-print("DEBUG: NEW SCRIPT IS RUNNING - Build ${BUILD_NUMBER}")
+# DEBUG: This is the NEW self-contained script - Build ${env.BUILD_NUMBER}
+# If you see this message, the new script is running correctly
 
-# Get paths from command line arguments
-if len(sys.argv) < 3:
-    print("Usage: python script.py <workspace> <workspace_dir>")
-    sys.exit(1)
+print("DEBUG: NEW SCRIPT IS RUNNING - Build ${env.BUILD_NUMBER}")
+print(f"DEBUG: Workspace: {sys.argv[1] if len(sys.argv) > 1 else 'Not provided'}")
+print(f"DEBUG: Workspace dir: {sys.argv[2] if len(sys.argv) > 2 else 'Not provided'}")
 
-workspace = sys.argv[1]
-workspace_dir = sys.argv[2]
+# Add the workspace to Python path
+workspace = sys.argv[1] if len(sys.argv) > 1 else os.getcwd()
+workspace_dir = sys.argv[2] if len(sys.argv) > 2 else os.path.join(workspace, "test_workspace")
 
-print(f"DEBUG: Workspace: {workspace}")
-print(f"DEBUG: Workspace dir: {workspace_dir}")
+sys.path.insert(0, workspace)
 
-# Include the necessary classes directly to avoid import issues
-@dataclass
-class TestConfig:
-    scenario_name: str
-    host: str
-    users: int = 1
-    spawn_rate: int = 1
-    run_time: str = "1m"
-    min_wait: int = 1000
-    max_wait: int = 5000
-    assertions: List[Dict] = None
-    extract_variables: Dict[str, str] = None
-    headers: Dict[str, str] = None
-    params: Dict[str, str] = None
-    body: Dict[str, Any] = None
-    output_dir: str = "test_reports"
-    generate_csv: bool = True
-    generate_html: bool = True
-    log_level: str = "INFO"
-
-    def __post_init__(self):
-        if self.assertions is None:
-            self.assertions = []
-        if self.extract_variables is None:
-            self.extract_variables = {}
-        if self.headers is None:
-            self.headers = {}
-        if self.params is None:
-            self.params = {}
-
-class LocustTestAgent:
-    def __init__(self, workspace_dir: str = None):
-        self.workspace_dir = workspace_dir or os.getcwd()
-        self.scripts_dir = os.path.join(self.workspace_dir, "generated_scripts")
-        self.reports_dir = os.path.join(self.workspace_dir, "generated_reports")
-        
-        os.makedirs(self.scripts_dir, exist_ok=True)
-        os.makedirs(self.reports_dir, exist_ok=True)
-        
-        logging.basicConfig(level=logging.INFO)
-        self.logger = logging.getLogger(__name__)
-    
-    def generate_script(self, scenario: Dict[str, Any], config: TestConfig) -> str:
-        try:
-            script_content = self._generate_basic_script(scenario, config)
-            
-            safe_name = ''.join(c if c.isalnum() or c in ('-', '_') else '_' for c in scenario["name"])
-            script_filename = f"{safe_name}.py"
-            script_path = os.path.join(self.scripts_dir, script_filename)
-            
-            with open(script_path, 'w') as f:
-                f.write(script_content)
-            
-            self.logger.info(f"Generated script: {script_path}")
-            return script_path
-            
-        except Exception as e:
-            raise RuntimeError(f"Error generating script: {e}")
-    
-    def _generate_basic_script(self, scenario: Dict[str, Any], config: TestConfig) -> str:
-        class_name = self._class_name_from_scenario(scenario['name'])
-        
-        # Convert wait times to integers to avoid division errors
-        min_wait_sec = int(config.min_wait) / 1000
-        max_wait_sec = int(config.max_wait) / 1000
-        
-        script_lines = [
-            "from locust import HttpUser, task, between",
-            "import json",
-            "import time",
-            "import logging",
-            "",
-            f"class {class_name}User(HttpUser):",
-            f"    wait_time = between({min_wait_sec}, {max_wait_sec})",
-            "",
-            "    def on_start(self):",
-            "        self.variables = {}",
-            "        self.logger = logging.getLogger(__name__)",
-            "",
-            "    def extract_variables(self, response, extract_config):",
-            "        if not extract_config:",
-            "            return",
-            "        try:",
-            "            data = response.json()",
-            "            for var_name, json_path in extract_config.items():",
-            "                try:",
-            "                    parts = json_path.split('.')",
-            "                    value = data",
-            "                    for part in parts:",
-            "                        if isinstance(value, dict):",
-            "                            value = value.get(part)",
-            "                        else:",
-            "                            value = None",
-            "                            break",
-            "                    if value is not None:",
-            "                        self.variables[var_name] = str(value)",
-            "                        self.logger.info(f'Extracted {var_name} = {value}')",
-            "                except Exception as e:",
-            "                    self.logger.error(f'Error extracting {var_name}: {str(e)}')",
-            "        except Exception as e:",
-            "            self.logger.error(f'Error parsing response JSON: {str(e)}')",
-            "",
-            "    def replace_variables(self, text):",
-            "        if not self.variables:",
-            "            return text",
-            "        for var_name, value in self.variables.items():",
-            "            text = text.replace(f'{{{{{var_name}}}}}', str(value))",
-            "        return text",
-            ""
-        ]
-        
-        # Add tasks for each step
-        for i, step in enumerate(scenario.get("steps", [])):
-            method_name = step.get("name", f"step_{i+1}").replace(" ", "_").replace("-", "_")
-            url = step.get("url", "/")
-            method = step.get("method", "GET").upper()
-            headers = step.get("headers", {})
-            params = step.get("params", {})
-            body = step.get("body", {})
-            extract_vars = step.get("extract_variables", {})
-            assertions = step.get("assertions", [])
-            
-            script_lines.extend([
-                f"    @task",
-                f"    def {method_name}(self):",
-                f"        url = self.replace_variables('{url}')",
-            ])
-            
-            if headers:
-                script_lines.append(f"        headers = {json.dumps(headers)}")
-            else:
-                script_lines.append("        headers = {}")
-            
-            if params:
-                script_lines.append(f"        params = {json.dumps(params)}")
-            else:
-                script_lines.append("        params = {}")
-            
-            if body and method in ["POST", "PUT", "PATCH"]:
-                script_lines.append(f"        data = {json.dumps(body)}")
-                script_lines.append(f"        response = self.client.{method.lower()}(url, json=data, headers=headers, params=params)")
-            else:
-                script_lines.append(f"        response = self.client.{method.lower()}(url, headers=headers, params=params)")
-            
-            if extract_vars:
-                script_lines.append(f"        self.extract_variables(response, {json.dumps(extract_vars)})")
-            
-            # Add assertions
-            for assertion in assertions:
-                assertion_type = assertion.get("type", "status_code")
-                expected = assertion.get("expected")
-                if assertion_type == "status_code":
-                    script_lines.append(f"        assert response.status_code == {expected}, f'Expected status {expected}, got {{response.status_code}}'")
-                elif assertion_type == "response_time":
-                    script_lines.append(f"        assert response.elapsed.total_seconds() < {expected}, f'Response time {{response.elapsed.total_seconds()}}s exceeded {expected}s'")
-            
-            script_lines.append("")
-        
-        return "\\n".join(script_lines)
-    
-    def _class_name_from_scenario(self, scenario_name: str) -> str:
-        return ''.join(word.capitalize() for word in scenario_name.replace('-', ' ').replace('_', ' ').split())
+print("DEBUG: Starting script generation...")
 
 try:
-    print("DEBUG: Starting script generation...")
+    from core.test_agent import LocustTestAgent, TestConfig
+    print("DEBUG: Successfully imported LocustTestAgent and TestConfig")
+except ImportError as e:
+    print(f"DEBUG: Import error: {e}")
+    print("DEBUG: Available modules:", [m for m in sys.modules.keys() if 'locust' in m.lower()])
+    raise
+
+# Load and validate scenario configuration
+scenario_file = os.path.join(workspace_dir, "scenario_config.json")
+print(f"DEBUG: Loading scenario from: {scenario_file}")
+with open(scenario_file, "r") as f:
+    scenario_config = json.load(f)
+
+# Load test configuration
+test_config_file = os.path.join(workspace_dir, "test_config.json")
+print(f"DEBUG: Loading test config from: {test_config_file}")
+with open(test_config_file, "r") as f:
+    test_config_data = json.load(f)
+
+# Validate scenario structure
+if not scenario_config.get("name"):
+    raise ValueError("Scenario name is required")
+if not scenario_config.get("steps"):
+    raise ValueError("Scenario steps are required")
+
+steps_count = len(scenario_config.get("steps", []))
+description = scenario_config.get("description", "No description provided")
+
+print(f"Scenario: {scenario_config['name']}")
+print(f"Steps: {steps_count}")
+print(f"Description: {description}")
+
+test_config = TestConfig(**test_config_data)
+agent = LocustTestAgent(workspace_dir=workspace_dir)
+script_path = agent.generate_script(scenario_config, test_config)
+
+print(f"Script generated successfully: {script_path}")
+
+metadata = {
+    "script_path": script_path,
+    "scenario_name": scenario_config["name"],
+    "steps_count": steps_count,
+    "description": description,
+    "success": True
+}
+
+metadata_file = os.path.join(workspace_dir, "generation_metadata.json")
+print(f"DEBUG: Writing metadata to: {metadata_file}")
+with open(metadata_file, "w") as f:
+    json.dump(metadata, f, indent=2)
     
-    # Load and validate scenario configuration
-    scenario_file = os.path.join(workspace_dir, "scenario_config.json")
-    print(f"DEBUG: Loading scenario from: {scenario_file}")
-    with open(scenario_file, "r") as f:
-        scenario_config = json.load(f)
-    
-    # Load test configuration
-    test_config_file = os.path.join(workspace_dir, "test_config.json")
-    print(f"DEBUG: Loading test config from: {test_config_file}")
-    with open(test_config_file, "r") as f:
-        test_config_data = json.load(f)
-    
-    # Validate scenario structure
-    if not scenario_config.get("name"):
-        raise ValueError("Scenario name is required")
-    if not scenario_config.get("steps"):
-        raise ValueError("Scenario steps are required")
-    
-    steps_count = len(scenario_config.get("steps", []))
-    description = scenario_config.get("description", "No description provided")
-    
-    print(f"Scenario: {scenario_config['name']}")
-    print(f"Steps: {steps_count}")
-    print(f"Description: {description}")
-    
-    test_config = TestConfig(**test_config_data)
-    agent = LocustTestAgent(workspace_dir=workspace_dir)
-    script_path = agent.generate_script(scenario_config, test_config)
-    
-    print(f"Script generated successfully: {script_path}")
-    
-    metadata = {
-        "script_path": script_path,
-        "scenario_name": scenario_config["name"],
-        "steps_count": steps_count,
-        "description": description,
-        "success": True
-    }
-    
-    metadata_file = os.path.join(workspace_dir, "generation_metadata.json")
-    print(f"DEBUG: Writing metadata to: {metadata_file}")
-    with open(metadata_file, "w") as f:
-        json.dump(metadata, f, indent=2)
-        
 except Exception as e:
     print(f"Error: {str(e)}")
     metadata = {
@@ -457,50 +298,11 @@ except Exception as e:
             }
         }
         
-        stage('Save to Git') {
-            steps {
-                script {
-                    echo "Saving generated script to Git..."
-                    echo "Branch: ${GIT_SCRIPTS_BRANCH}"
-                    echo "Script: ${env.GENERATED_SCRIPT}"
-                    
-                    // Configure Git
-                    bat """
-                        git config user.email "${GIT_EMAIL}"
-                        git config user.name "${GIT_USER}"
-                    """
-                    
-                    // Create scripts branch if it doesn't exist
-                    bat """
-                        git checkout -b ${GIT_SCRIPTS_BRANCH} 2>nul || git checkout ${GIT_SCRIPTS_BRANCH}
-                    """
-                    
-                    // Add generated script
-                    def commitMessage = params.GIT_COMMIT_MESSAGE ?: "Generated script: ${params.SCENARIO_NAME} - ${TIMESTAMP} - ${BUILD_INFO}"
-                    bat """
-                        git add ${SCRIPTS_DIR}\\*.py
-                        git commit -m "${commitMessage}" || echo "No changes to commit"
-                    """
-                    
-                    // Push to remote
-                    bat """
-                        git push origin ${GIT_SCRIPTS_BRANCH} || echo "Push failed or no changes"
-                    """
-                    
-                    // Return to main branch
-                    bat "git checkout main"
-                    
-                    echo "Script saved to Git branch: ${GIT_SCRIPTS_BRANCH}"
-                    echo "Commit message: ${commitMessage}"
-                }
-            }
-        }
-        
         stage('Archive Script') {
             steps {
                 script {
-                    // Archive the generated script
-                    archiveArtifacts artifacts: "${SCRIPTS_DIR}\\*.py", fingerprint: true
+                    // Archive the generated script from test_workspace
+                    archiveArtifacts artifacts: "${WORKSPACE_DIR}\\generated_scripts\\*.py", fingerprint: true
                     echo "Script archived successfully: ${env.GENERATED_SCRIPT}"
                 }
             }
@@ -523,9 +325,9 @@ except Exception as e:
         }
         
         success {
-            echo "✅ Script generated and saved to Git successfully!"
+            echo "✅ Script generated successfully!"
             echo "📁 Script: ${env.GENERATED_SCRIPT}"
-            echo "🌿 Branch: ${GIT_SCRIPTS_BRANCH}"
+            echo "📦 Script archived and ready for use"
             echo "🔗 You can now use this script in the Test Execution Pipeline"
         }
         
