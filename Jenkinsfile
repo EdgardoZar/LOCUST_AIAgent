@@ -2,7 +2,15 @@ pipeline {
     agent any
     
     parameters {
-        // Basic test parameters
+        // Pipeline mode selection
+        choice(name: 'PIPELINE_MODE', choices: ['generate_script', 'run_test'], description: 'Pipeline mode')
+        
+        // Script generation parameters
+        string(name: 'SCENARIO_NAME', defaultValue: '', description: 'Name of the test scenario')
+        text(name: 'SCENARIO_JSON', defaultValue: '', description: 'JSON configuration for the scenario')
+        
+        // Test execution parameters
+        string(name: 'SELECTED_SCRIPT', defaultValue: '', description: 'Script to run (will be populated from available scripts)')
         string(name: 'TARGET_HOST', defaultValue: 'https://api.example.com', description: 'Target host URL for testing')
         string(name: 'API_TOKEN', defaultValue: '', description: 'API token for authentication (optional)')
         choice(name: 'ENVIRONMENT', choices: ['dev', 'staging', 'prod'], description: 'Target environment')
@@ -30,7 +38,12 @@ pipeline {
         PYTHON_VERSION = '3.9'
         WORKSPACE_DIR = "${WORKSPACE}\\test_workspace"
         REPORTS_DIR = "${WORKSPACE}\\test_reports"
+        SCRIPTS_DIR = "${WORKSPACE}\\generated_scripts"
         TIMESTAMP = "${new Date().format('yyyyMMdd_HHmmss')}"
+        
+        // Git configuration
+        GIT_SCRIPTS_BRANCH = 'generated-scripts'
+        GIT_SCRIPTS_FOLDER = 'test_workspace/generated_scripts'
         
         // Test configuration from parameters
         TEST_HOST = "${params.TARGET_HOST}"
@@ -52,27 +65,25 @@ pipeline {
             steps {
                 checkout scm
                 echo "Checked out code from ${env.BRANCH_NAME}"
-                echo "Build parameters:"
-                echo "  Target Host: ${params.TARGET_HOST}"
-                echo "  Environment: ${params.ENVIRONMENT}"
-                echo "  Users: ${params.USERS}"
-                echo "  Run Time: ${params.RUN_TIME}"
-                echo "  LLM Analysis: ${params.USE_LLM_ANALYSIS}"
+                echo "Pipeline Mode: ${params.PIPELINE_MODE}"
             }
         }
         
         stage('Setup Environment') {
             steps {
                 script {
-                    // Create workspace directories
-                    bat "if not exist ${WORKSPACE_DIR} mkdir ${WORKSPACE_DIR}"
-                    bat "if not exist ${REPORTS_DIR} mkdir ${REPORTS_DIR}"
+                    // Create directories
+                    bat "if not exist \"${WORKSPACE_DIR}\" mkdir \"${WORKSPACE_DIR}\""
+                    bat "if not exist \"${REPORTS_DIR}\" mkdir \"${REPORTS_DIR}\""
+                    bat "if not exist \"${SCRIPTS_DIR}\" mkdir \"${SCRIPTS_DIR}\""
                     
-                    // Setup Python environment
+                    // Setup Python virtual environment
                     bat """
-                        python -m venv venv
+                        if not exist venv (
+                            python -m venv venv
+                        )
                         call venv\\Scripts\\activate.bat
-                        python -m pip install --upgrade pip
+                        pip install --upgrade pip
                         pip install -r requirements.txt
                         pip install -e .
                     """
@@ -80,75 +91,147 @@ pipeline {
             }
         }
         
-        stage('Create Test Configuration') {
+        stage('Script Generation') {
+            when {
+                expression { params.PIPELINE_MODE == 'generate_script' }
+            }
             steps {
                 script {
-                    // Create scenario configuration
-                    def scenarioConfig = [
-                        name: "Jenkins Pipeline Test - ${params.ENVIRONMENT}",
-                        description: "Automated test from Jenkins pipeline for ${params.ENVIRONMENT} environment",
-                        min_wait: params.MIN_WAIT,
-                        max_wait: params.MAX_WAIT,
-                        steps: [
-                            [
-                                id: 1,
-                                type: "api_call",
-                                config: [
-                                    name: "Health Check",
-                                    method: "GET",
-                                    url: "/health",
-                                    headers: [
-                                        "Content-Type": "application/json",
-                                        "User-Agent": "Jenkins-Locust-AI-Agent/1.0"
-                                    ],
-                                    params: [:],
-                                    body: null,
-                                    extract: [:],
-                                    assertions: [
-                                        [type: "status_code", value: 200]
-                                    ]
-                                ]
-                            ],
-                            [
-                                id: 2,
-                                type: "wait",
-                                config: [wait: 1]
-                            ],
-                            [
-                                id: 3,
-                                type: "api_call",
-                                config: [
-                                    name: "API Endpoint Test",
-                                    method: "GET",
-                                    url: "/api/v1/status",
-                                    headers: [
-                                        "Content-Type": "application/json",
-                                        "User-Agent": "Jenkins-Locust-AI-Agent/1.0"
-                                    ],
-                                    params: [:],
-                                    body: null,
-                                    extract: [
-                                        status: "\$.status"
-                                    ],
-                                    assertions: [
-                                        [type: "status_code", value: 200],
-                                        [type: "json_path", path: "\$.status", value: "healthy"]
-                                    ]
-                                ]
-                            ]
-                        ]
-                    ]
+                    echo "Generating script from scenario configuration..."
                     
-                    // Add authentication if API token is provided
-                    if (params.API_TOKEN) {
-                        scenarioConfig.steps[2].config.headers["Authorization"] = "Bearer ${params.API_TOKEN}"
-                    }
-                    
-                    writeFile file: "${WORKSPACE_DIR}\\scenario_config.json", text: groovy.json.JsonOutput.toJson(scenarioConfig)
+                    // Parse scenario JSON
+                    def scenarioConfig = new groovy.json.JsonSlurper().parseText(params.SCENARIO_JSON)
                     
                     // Create test configuration
                     def testConfig = [
-                        scenario_name: "Jenkins Pipeline Test - ${params.ENVIRONMENT}",
+                        scenario_name: params.SCENARIO_NAME,
+                        host: params.TARGET_HOST,
+                        users: params.USERS,
+                        spawn_rate: params.SPAWN_RATE,
+                        run_time: params.RUN_TIME,
+                        min_wait: params.MIN_WAIT,
+                        max_wait: params.MAX_WAIT,
+                        assertions: [
+                            [type: "status_code", value: 200]
+                        ],
+                        extract_variables: [:],
+                        headers: [
+                            "Content-Type": "application/json",
+                            "User-Agent": "Jenkins-Locust-AI-Agent/1.0"
+                        ],
+                        params: [:],
+                        body: [:],
+                        output_dir: REPORTS_DIR,
+                        generate_csv: params.GENERATE_CSV_REPORT,
+                        generate_html: params.GENERATE_HTML_REPORT,
+                        log_level: params.LOG_LEVEL
+                    ]
+                    
+                    // Save configurations
+                    writeFile file: "${WORKSPACE_DIR}\\scenario_config.json", text: groovy.json.JsonOutput.toJson(scenarioConfig)
+                    writeFile file: "${WORKSPACE_DIR}\\test_config.json", text: groovy.json.JsonOutput.toJson(testConfig)
+                    
+                    // Generate script using AI Agent
+                    bat """
+                        call venv\\Scripts\\activate.bat
+                        cd ${WORKSPACE}
+                        set PYTHONPATH=%PYTHONPATH%;${WORKSPACE}
+                        
+                        python -c "
+import sys
+sys.path.insert(0, '.')
+from Locust_AI_Agent.core.test_agent import LocustTestAgent, TestConfig
+import json
+
+# Load configurations
+with open('${WORKSPACE_DIR}\\scenario_config.json', 'r') as f:
+    scenario_config = json.load(f)
+with open('${WORKSPACE_DIR}\\test_config.json', 'r') as f:
+    test_config_data = json.load(f)
+
+# Create test config
+test_config = TestConfig(**test_config_data)
+
+# Generate script
+agent = LocustTestAgent(workspace_dir='${WORKSPACE_DIR}')
+script_path = agent.generate_script(scenario_config, test_config)
+print(f'Script generated: {script_path}')
+"
+                    """
+                    
+                    // Commit script to Git
+                    bat """
+                        git config user.email "jenkins@example.com"
+                        git config user.name "Jenkins Pipeline"
+                        
+                        rem Create scripts branch if it doesn't exist
+                        git checkout -b ${GIT_SCRIPTS_BRANCH} 2>nul || git checkout ${GIT_SCRIPTS_BRANCH}
+                        
+                        rem Add generated script
+                        git add ${SCRIPTS_DIR}\\*.py
+                        git commit -m "Generated script: ${params.SCENARIO_NAME} - ${TIMESTAMP}" || echo "No changes to commit"
+                        
+                        rem Push to remote
+                        git push origin ${GIT_SCRIPTS_BRANCH} || echo "Push failed or no changes"
+                        
+                        rem Return to main branch
+                        git checkout main
+                    """
+                    
+                    echo "Script generation completed successfully!"
+                }
+            }
+        }
+        
+        stage('List Available Scripts') {
+            when {
+                expression { params.PIPELINE_MODE == 'run_test' }
+            }
+            steps {
+                script {
+                    echo "Fetching available scripts from Git..."
+                    
+                    // Fetch scripts branch
+                    bat """
+                        git fetch origin ${GIT_SCRIPTS_BRANCH}:${GIT_SCRIPTS_BRANCH} || echo "Branch not found"
+                        git checkout ${GIT_SCRIPTS_BRANCH} || echo "Could not checkout scripts branch"
+                    """
+                    
+                    // List available scripts
+                    def scriptFiles = bat(script: "dir ${SCRIPTS_DIR}\\*.py /b", returnStdout: true).trim()
+                    if (scriptFiles) {
+                        echo "Available scripts:"
+                        scriptFiles.split('\n').each { script ->
+                            echo "  - ${script}"
+                        }
+                        
+                        // If no script selected, use the first one
+                        if (!params.SELECTED_SCRIPT) {
+                            def firstScript = scriptFiles.split('\n')[0]
+                            env.SELECTED_SCRIPT = firstScript
+                            echo "Auto-selected script: ${firstScript}"
+                        }
+                    } else {
+                        error "No scripts found in ${SCRIPTS_DIR}"
+                    }
+                    
+                    // Return to main branch
+                    bat "git checkout main"
+                }
+            }
+        }
+        
+        stage('Run Test') {
+            when {
+                expression { params.PIPELINE_MODE == 'run_test' }
+            }
+            steps {
+                script {
+                    echo "Running test with script: ${env.SELECTED_SCRIPT}"
+                    
+                    // Create test configuration
+                    def testConfig = [
+                        scenario_name: env.SELECTED_SCRIPT.replace('.py', ''),
                         host: params.TARGET_HOST,
                         users: params.USERS,
                         spawn_rate: params.SPAWN_RATE,
@@ -173,109 +256,92 @@ pipeline {
                     
                     writeFile file: "${WORKSPACE_DIR}\\test_config.json", text: groovy.json.JsonOutput.toJson(testConfig)
                     
-                    echo "Test configuration created:"
-                    echo "  Scenario: ${testConfig.scenario_name}"
-                    echo "  Host: ${testConfig.host}"
-                    echo "  Users: ${testConfig.users}"
-                    echo "  Run Time: ${testConfig.run_time}"
-                }
-            }
-        }
-        
-        stage('Run AI Agent') {
-            steps {
-                script {
-                    // Activate virtual environment and run AI agent
+                    // Fetch the selected script
+                    bat """
+                        git fetch origin ${GIT_SCRIPTS_BRANCH}:${GIT_SCRIPTS_BRANCH}
+                        git checkout ${GIT_SCRIPTS_BRANCH} -- ${SCRIPTS_DIR}\\${env.SELECTED_SCRIPT}
+                        git checkout main
+                    """
+                    
+                    // Run the test
                     bat """
                         call venv\\Scripts\\activate.bat
                         cd ${WORKSPACE}
-                        
-                        rem Add current directory to Python path
                         set PYTHONPATH=%PYTHONPATH%;${WORKSPACE}
                         
-                        rem Run the AI agent
-                        python run_example.py
-                    """
-                    
-                    // Run with LLM analysis if enabled
-                    if (params.USE_LLM_ANALYSIS) {
-                        withCredentials([string(credentialsId: 'openai-api-key', variable: 'OPENAI_API_KEY')]) {
-                            bat """
-                                call venv\\Scripts\\activate.bat
-                                cd ${WORKSPACE}
-                                set PYTHONPATH=%PYTHONPATH%;${WORKSPACE}
-                                set OPENAI_API_KEY=${OPENAI_API_KEY}
-                                
-                                rem Run with LLM analysis
-                                python -c "
+                        python -c "
 import sys
 sys.path.insert(0, '.')
 from Locust_AI_Agent.core.test_agent import LocustTestAgent, TestConfig
-from Locust_AI_Agent.analysis.llm_analyzer import LLMAnalyzer
 import json
 
-# Load configurations
-with open('${WORKSPACE_DIR}\\scenario_config.json', 'r') as f:
-    scenario_config = json.load(f)
+# Load test config
 with open('${WORKSPACE_DIR}\\test_config.json', 'r') as f:
     test_config_data = json.load(f)
 
 # Create test config
 test_config = TestConfig(**test_config_data)
 
-# Run workflow
+# Run test
 agent = LocustTestAgent(workspace_dir='${WORKSPACE_DIR}')
-workflow_result = agent.run_complete_workflow(scenario_config, test_config)
-
-# LLM analysis
-llm_analyzer = LLMAnalyzer(api_key='${OPENAI_API_KEY}')
-llm_analysis = llm_analyzer.analyze_test_results(
-    workflow_result['test_result'],
-    workflow_result.get('html_report_path')
-)
-workflow_result['llm_analysis'] = llm_analysis
+script_path = '${SCRIPTS_DIR}\\${env.SELECTED_SCRIPT}'
+result = agent.execute_test(script_path, test_config)
 
 # Save results
-with open('${WORKSPACE_DIR}\\test_results_with_llm.json', 'w') as f:
+workflow_result = {
+    'workflow_success': result.success,
+    'scenario_name': result.scenario_name,
+    'script_path': result.script_path,
+    'html_report_path': result.html_report_path,
+    'csv_report_path': result.csv_report_path,
+    'test_result': {
+        'execution_time': result.execution_time,
+        'total_requests': result.total_requests,
+        'failed_requests': result.failed_requests,
+        'avg_response_time': result.avg_response_time,
+        'requests_per_sec': result.requests_per_sec
+    }
+}
+
+with open('${WORKSPACE_DIR}\\test_results.json', 'w') as f:
     json.dump(workflow_result, f, indent=2)
+
+print(f'Test completed: Success={result.success}')
 "
-                            """
-                        }
-                    }
+                    """
                 }
             }
         }
         
         stage('Archive Results') {
+            when {
+                expression { params.PIPELINE_MODE == 'run_test' }
+            }
             steps {
                 script {
                     // Archive test results and reports
-                    archiveArtifacts artifacts: "${WORKSPACE_DIR}\\test_results.json", fingerprint: true
-                    
-                    if (params.USE_LLM_ANALYSIS) {
-                        archiveArtifacts artifacts: "${WORKSPACE_DIR}\\test_results_with_llm.json", fingerprint: true
-                    }
+                    archiveArtifacts artifacts: "test_workspace\\test_results.json", fingerprint: true
                     
                     // Archive generated reports
                     if (params.GENERATE_HTML_REPORT) {
-                        archiveArtifacts artifacts: "${REPORTS_DIR}\\**\\*.html", fingerprint: true
+                        archiveArtifacts artifacts: "test_reports\\**\\*.html", fingerprint: true
                     }
                     
                     if (params.GENERATE_CSV_REPORT) {
-                        archiveArtifacts artifacts: "${REPORTS_DIR}\\**\\*.csv", fingerprint: true
+                        archiveArtifacts artifacts: "test_reports\\**\\*.csv", fingerprint: true
                     }
-                    
-                    // Archive generated scripts
-                    archiveArtifacts artifacts: "${WORKSPACE_DIR}\\generated_scripts\\**\\*", fingerprint: true
                 }
             }
         }
         
         stage('Analyze Results') {
+            when {
+                expression { params.PIPELINE_MODE == 'run_test' }
+            }
             steps {
                 script {
                     // Load and analyze test results
-                    def resultsText = readFile file: "${WORKSPACE_DIR}\\test_results.json"
+                    def resultsText = readFile file: "test_workspace\\test_results.json"
                     def results = new groovy.json.JsonSlurper().parseText(resultsText)
                     
                     echo "Test Results Analysis:"
@@ -298,15 +364,15 @@ with open('${WORKSPACE_DIR}\\test_results_with_llm.json', 'w') as f:
                         // Performance threshold validation
                         def performanceIssues = []
                         
-                        if (testResult.avg_response_time > params.MAX_AVG_RESPONSE_TIME) {
+                        if (testResult.avg_response_time > params.MAX_AVG_RESPONSE_TIME.toInteger()) {
                             performanceIssues.add("Average response time (${testResult.avg_response_time}ms) exceeds threshold (${params.MAX_AVG_RESPONSE_TIME}ms)")
                         }
                         
-                        if (successRate < params.MIN_SUCCESS_RATE) {
+                        if (successRate < params.MIN_SUCCESS_RATE.toInteger()) {
                             performanceIssues.add("Success rate (${successRate}%) below threshold (${params.MIN_SUCCESS_RATE}%)")
                         }
                         
-                        if (testResult.requests_per_sec < params.MIN_REQUESTS_PER_SEC) {
+                        if (testResult.requests_per_sec < params.MIN_REQUESTS_PER_SEC.toInteger()) {
                             performanceIssues.add("Requests per second (${testResult.requests_per_sec}) below threshold (${params.MIN_REQUESTS_PER_SEC})")
                         }
                         
@@ -320,46 +386,27 @@ with open('${WORKSPACE_DIR}\\test_results_with_llm.json', 'w') as f:
                             echo "All performance thresholds met!"
                         }
                     }
-                    
-                    // LLM analysis summary
-                    if (params.USE_LLM_ANALYSIS && results.llm_analysis) {
-                        def llmAnalysis = results.llm_analysis
-                        echo "LLM Analysis:"
-                        echo "  Performance Grade: ${llmAnalysis.performance_grade}"
-                        echo "  Summary: ${llmAnalysis.summary}"
-                        
-                        if (llmAnalysis.key_insights) {
-                            echo "  Key Insights:"
-                            llmAnalysis.key_insights.each { insight ->
-                                echo "    • ${insight}"
-                            }
-                        }
-                        
-                        if (llmAnalysis.recommendations) {
-                            echo "  Recommendations:"
-                            llmAnalysis.recommendations.each { rec ->
-                                echo "    • ${rec}"
-                            }
-                        }
-                    }
                 }
             }
         }
         
         stage('Publish HTML Report') {
             when {
-                expression { params.GENERATE_HTML_REPORT }
+                allOf {
+                    expression { params.PIPELINE_MODE == 'run_test' }
+                    expression { params.GENERATE_HTML_REPORT }
+                }
             }
             steps {
                 script {
                     // Check if HTML report exists
-                    def htmlReportExists = fileExists "${REPORTS_DIR}\\*.html"
+                    def htmlReportExists = fileExists "test_reports\\*.html"
                     if (htmlReportExists) {
                         publishHTML([
                             allowMissing: false,
                             alwaysLinkToLastBuild: true,
                             keepAll: true,
-                            reportDir: REPORTS_DIR,
+                            reportDir: 'test_reports',
                             reportFiles: '*.html',
                             reportName: 'Locust Test Report',
                             reportTitles: 'Performance Test Results'
@@ -379,17 +426,24 @@ with open('${WORKSPACE_DIR}\\test_results_with_llm.json', 'w') as f:
                 echo "Pipeline completed with result: ${currentBuild.result}"
                 echo "Build URL: ${env.BUILD_URL}"
                 
-                // Clean up workspace if needed
-                if (currentBuild.result == 'SUCCESS' || currentBuild.result == 'UNSTABLE') {
-                    echo "Test completed successfully"
+                if (params.PIPELINE_MODE == 'generate_script') {
+                    echo "Script generation completed"
                 } else {
-                    echo "Test failed - check logs for details"
+                    if (currentBuild.result == 'SUCCESS' || currentBuild.result == 'UNSTABLE') {
+                        echo "Test completed successfully"
+                    } else {
+                        echo "Test failed - check logs for details"
+                    }
                 }
             }
         }
         
         success {
-            echo "Pipeline succeeded! Check the HTML report for detailed results."
+            if (params.PIPELINE_MODE == 'generate_script') {
+                echo "Script generated and saved to Git successfully!"
+            } else {
+                echo "Test completed successfully! Check the HTML report for detailed results."
+            }
         }
         
         failure {
