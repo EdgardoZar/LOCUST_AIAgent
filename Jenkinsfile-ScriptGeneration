@@ -314,7 +314,7 @@ except Exception as e:
             steps {
                 script {
                     // Archive the generated script from test_workspace
-                    archiveArtifacts artifacts: "${WORKSPACE_DIR}\\generated_scripts\\*.py", fingerprint: true
+                    archiveArtifacts artifacts: "test_workspace\\generated_scripts\\*.py", fingerprint: true
                     echo "Script archived successfully: ${env.GENERATED_SCRIPT}"
                 }
             }
