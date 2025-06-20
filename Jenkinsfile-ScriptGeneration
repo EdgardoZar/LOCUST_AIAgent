@@ -342,12 +342,15 @@ except Exception as e:
                             git rev-parse --abbrev-ref HEAD
                         """
                         
-                        // Ensure we're on main branch (not detached HEAD)
+                        // Ensure we're on main branch and pull latest changes
                         bat """
                             echo DEBUG: Checking out main branch to avoid detached HEAD
                             git checkout main
                             echo DEBUG: Current branch after checkout:
                             git branch
+                            echo DEBUG: Pulling latest changes from remote main
+                            git pull https://%GIT_USERNAME%:%GIT_PASSWORD%@github.com/EdgardoZar/LOCUST_AIAgent.git main
+                            echo DEBUG: Pull completed
                         """
                         
                         // Copy generated script to a permanent location in the repository
