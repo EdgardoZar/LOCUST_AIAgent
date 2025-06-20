@@ -125,8 +125,29 @@ pipeline {
                         echo DEBUG: Pull completed
                     """
                     
-                    // List available scripts from the generated_scripts folder
-                    def scriptFiles = bat(script: "dir ${SCRIPTS_DIR}\\*.py /b", returnStdout: true).trim()
+                    // List available scripts from the generated_scripts folder using findstr
+                    bat """
+                        echo DEBUG: Checking if generated_scripts directory exists
+                        if exist "${SCRIPTS_DIR}" (
+                            echo DEBUG: Directory exists, listing files
+                            dir "${SCRIPTS_DIR}\\*.py" /b
+                        ) else (
+                            echo DEBUG: Directory does not exist
+                            echo "No scripts found"
+                        )
+                    """
+                    
+                    // Use a more robust method to get script files
+                    def scriptFiles = ""
+                    try {
+                        def dirOutput = bat(script: "dir \"${SCRIPTS_DIR}\\*.py\" /b", returnStdout: true).trim()
+                        if (dirOutput && !dirOutput.contains("File Not Found")) {
+                            scriptFiles = dirOutput
+                        }
+                    } catch (Exception e) {
+                        echo "Error listing scripts: ${e.getMessage()}"
+                    }
+                    
                     if (scriptFiles) {
                         echo "Available scripts:"
                         scriptFiles.split('\n').each { script ->
@@ -220,8 +241,27 @@ pipeline {
                     // Write the Python script to a file
                     def executeTestScript = '''
 import sys
-sys.path.insert(0, ".")
-from Locust_AI_Agent.core.test_agent import LocustTestAgent, TestConfig
+import os
+
+# Add the workspace to Python path
+workspace = r"${WORKSPACE}"
+sys.path.insert(0, workspace)
+sys.path.insert(0, os.path.join(workspace, "core"))
+sys.path.insert(0, os.path.join(workspace, "analysis"))
+sys.path.insert(0, os.path.join(workspace, "utils"))
+
+print(f"DEBUG: Python path: {sys.path}")
+print(f"DEBUG: Current working directory: {os.getcwd()}")
+print(f"DEBUG: Workspace: {workspace}")
+
+try:
+    from core.test_agent import LocustTestAgent, TestConfig
+    print("DEBUG: Successfully imported LocustTestAgent and TestConfig")
+except ImportError as e:
+    print(f"DEBUG: Import error: {e}")
+    print("DEBUG: Available modules:", [m for m in sys.modules.keys() if 'locust' in m.lower()])
+    sys.exit(1)
+
 import json
 
 # Load test config
@@ -270,7 +310,9 @@ print(f"Test completed: Success={result.success}")
                     bat """
                         call venv\\Scripts\\activate.bat
                         cd ${WORKSPACE}
-                        set PYTHONPATH=%PYTHONPATH%;${WORKSPACE}
+                        set PYTHONPATH=%PYTHONPATH%;${WORKSPACE};${WORKSPACE}\\core;${WORKSPACE}\\analysis;${WORKSPACE}\\utils
+                        echo DEBUG: PYTHONPATH=%PYTHONPATH%
+                        echo DEBUG: About to run: python ${WORKSPACE_DIR}\\execute_test.py
                         python ${WORKSPACE_DIR}\\execute_test.py
                     """
                     
