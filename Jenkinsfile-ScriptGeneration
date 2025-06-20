@@ -360,9 +360,9 @@ except Exception as e:
                     // Push to remote (don't fail if no changes)
                     bat """
                         echo DEBUG: Checking if push is needed
-                        git log origin/${GIT_SCRIPTS_BRANCH}..HEAD --oneline 2>nul || echo "No remote branch exists yet"
+                        git ls-remote --heads origin ${GIT_SCRIPTS_BRANCH} 2>nul | findstr ${GIT_SCRIPTS_BRANCH} >nul && echo "Remote branch exists" || echo "Remote branch does not exist - first push"
                         echo DEBUG: Attempting to push to origin ${GIT_SCRIPTS_BRANCH}
-                        git push origin ${GIT_SCRIPTS_BRANCH} || echo "Push completed (no changes or already up to date)"
+                        git push -u origin ${GIT_SCRIPTS_BRANCH} || echo "Push completed (no changes or already up to date)"
                         echo DEBUG: Push completed
                     """
                     
