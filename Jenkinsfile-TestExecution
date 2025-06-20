@@ -2,53 +2,15 @@ pipeline {
     agent any
     
     parameters {
-        // Test execution parameters - Dynamic script selection
-        activeChoice(name: 'SELECTED_SCRIPT', 
-            description: 'Select a script to run (dynamically populated from generated_scripts folder)',
-            referencedParameter: 'SCRIPT_SOURCE',
-            script: [
-                script: [
-                    classpath: [],
-                    sandbox: true,
-                    script: '''
-                        // Fetch available scripts from the generated_scripts folder
-                        def scripts = []
-                        def workspace = pwd()
-                        def scriptsDir = workspace + "/generated_scripts"
-                        
-                        echo "DEBUG: Looking for scripts in: " + scriptsDir
-                        
-                        def dir = new File(scriptsDir)
-                        if (dir.exists() && dir.isDirectory()) {
-                            dir.eachFile { file ->
-                                if (file.name.endsWith('.py')) {
-                                    scripts.add(file.name)
-                                    echo "DEBUG: Found script: " + file.name
-                                }
-                            }
-                        } else {
-                            echo "DEBUG: Scripts directory does not exist: " + scriptsDir
-                        }
-                        
-                        if (scripts.isEmpty()) {
-                            scripts.add("No scripts found - Run Script Generation Pipeline first")
-                        }
-                        
-                        echo "DEBUG: Returning " + scripts.size() + " scripts"
-                        return scripts
-                    '''
-                ]
-            ])
-        
-        // Hidden parameter to trigger script refresh
-        string(name: 'SCRIPT_SOURCE', defaultValue: 'refresh', description: 'Hidden parameter to trigger script refresh')
-        
-        string(name: 'TARGET_HOST', defaultValue: 'https://api.example.com', description: 'Target host URL for testing')
+        // Test execution parameters will be selected during the build
+        string(name: 'TARGET_HOST', defaultValue: 'https://rickandmortyapi.com/api', description: 'Target host URL for testing')
         string(name: 'API_TOKEN', defaultValue: '', description: 'API token for authentication (optional)')
         choice(name: 'ENVIRONMENT', choices: ['dev', 'staging', 'prod'], description: 'Target environment')
         
         // Test configuration
         string(name: 'USERS', defaultValue: '10', description: 'Number of concurrent users')
+        
+        // Test configuration
         string(name: 'SPAWN_RATE', defaultValue: '2', description: 'User spawn rate per second')
         string(name: 'RUN_TIME', defaultValue: '5m', description: 'Test duration (e.g., 5m, 10m, 1h)')
         string(name: 'MIN_WAIT', defaultValue: '1000', description: 'Minimum wait time between requests (ms)')
@@ -149,59 +111,44 @@ pipeline {
             }
         }
         
-        stage('Show Available Scripts') {
+        stage('Select Script') {
             steps {
                 script {
-                    echo "🔍 Checking available scripts from GitHub repository..."
-                    echo "📁 Scripts location: ${SCRIPTS_DIR}"
-                    
-                    // List available scripts from the generated_scripts folder
-                    bat """
-                        echo DEBUG: Checking if generated_scripts directory exists
-                        if exist "${SCRIPTS_DIR}" (
-                            echo DEBUG: Directory exists, listing files
-                            dir "${SCRIPTS_DIR}\\*.py" /b
-                        ) else (
-                            echo DEBUG: Directory does not exist
-                            echo "No scripts found"
-                        )
-                    """
+                    echo "🔍 Finding available scripts..."
                     
                     // Use a more robust method to get script files
                     def scriptFiles = ""
                     try {
                         def dirOutput = bat(script: "dir \"${SCRIPTS_DIR}\\*.py\" /b", returnStdout: true).trim()
-                        if (dirOutput && !dirOutput.contains("File Not Found")) {
+                        if (dirOutput && !dirOutput.contains("File Not Found") && !dirOutput.isEmpty()) {
                             scriptFiles = dirOutput
                         }
                     } catch (Exception e) {
-                        echo "Error listing scripts: ${e.getMessage()}"
+                        error "Could not list scripts: ${e.getMessage()}"
                     }
                     
-                    if (scriptFiles) {
-                        echo "✅ Available scripts found:"
-                        scriptFiles.split('\n').each { script ->
-                            echo "  📄 ${script}"
-                        }
-                        
-                        // Store available scripts in environment
-                        env.AVAILABLE_SCRIPTS = scriptFiles
-                        env.SCRIPTS_COUNT = scriptFiles.split('\n').size()
-                        
-                        echo "📊 Total scripts available: ${env.SCRIPTS_COUNT}"
-                        echo ""
-                        echo "🎯 Selected script: ${params.SELECTED_SCRIPT}"
-                        echo ""
-                        
-                        // Set the selected script
-                        env.SELECTED_SCRIPT = params.SELECTED_SCRIPT
-                        
-                    } else {
-                        echo "❌ No scripts found in ${SCRIPTS_DIR}"
-                        echo "💡 Please run the Script Generation Pipeline first to generate test scripts"
-                        echo "   Then run this pipeline again to execute the tests"
-                        error "No scripts available. Please generate scripts first."
+                    if (!scriptFiles) {
+                        error "❌ No scripts found in ${SCRIPTS_DIR}. Please run the Script Generation Pipeline first."
                     }
+                    
+                    def scriptList = scriptFiles.tokenize('\n').collect { it.trim() }
+                    echo "✅ Found scripts: ${scriptList}"
+
+                    // Now, ask the user to choose using an input step
+                    def userInput = input(
+                        id: 'scriptSelection',
+                        message: 'Please select the test script to run',
+                        parameters: [
+                            choice(
+                                name: 'SELECTED_SCRIPT',
+                                choices: scriptList,
+                                description: 'Choose a script from the list of available scripts.'
+                            )
+                        ]
+                    )
+                    
+                    echo "🎯 User selected script: ${userInput}"
+                    env.SELECTED_SCRIPT = userInput
                 }
             }
         }
@@ -212,14 +159,14 @@ pipeline {
                     echo "Validating selected script: ${env.SELECTED_SCRIPT}"
                     
                     // Check if a valid script was selected
-                    if (params.SELECTED_SCRIPT == "No scripts found - Run Script Generation Pipeline first") {
-                        error "No scripts available. Please run the Script Generation Pipeline first to generate test scripts."
+                    if (env.SELECTED_SCRIPT == null || env.SELECTED_SCRIPT.isEmpty()) {
+                        error "No script was selected. Aborting."
                     }
                     
                     // Check if script exists
                     def scriptExists = fileExists "${SCRIPTS_DIR}\\${env.SELECTED_SCRIPT}"
                     if (!scriptExists) {
-                        error "Script ${env.SELECTED_SCRIPT} not found. Please check the script name or regenerate scripts."
+                        error "Script '${env.SELECTED_SCRIPT}' not found. It might have been deleted from the repository. Please try running the build again."
                     }
                     
                     // Store script info in environment
