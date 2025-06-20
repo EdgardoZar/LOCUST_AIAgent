@@ -2,8 +2,47 @@ pipeline {
     agent any
     
     parameters {
-        // Test execution parameters
-        string(name: 'SELECTED_SCRIPT', defaultValue: '', description: 'Script to run (e.g., Rick_and_Morty_API_Test.py). Leave empty to auto-select the first available script.')
+        // Test execution parameters - Dynamic script selection
+        activeChoice(name: 'SELECTED_SCRIPT', 
+            description: 'Select a script to run (dynamically populated from generated_scripts folder)',
+            referencedParameter: 'SCRIPT_SOURCE',
+            script: [
+                script: [
+                    classpath: [],
+                    sandbox: true,
+                    script: '''
+                        // Fetch available scripts from the generated_scripts folder
+                        def scripts = []
+                        def workspace = pwd()
+                        def scriptsDir = workspace + "/generated_scripts"
+                        
+                        echo "DEBUG: Looking for scripts in: " + scriptsDir
+                        
+                        def dir = new File(scriptsDir)
+                        if (dir.exists() && dir.isDirectory()) {
+                            dir.eachFile { file ->
+                                if (file.name.endsWith('.py')) {
+                                    scripts.add(file.name)
+                                    echo "DEBUG: Found script: " + file.name
+                                }
+                            }
+                        } else {
+                            echo "DEBUG: Scripts directory does not exist: " + scriptsDir
+                        }
+                        
+                        if (scripts.isEmpty()) {
+                            scripts.add("No scripts found - Run Script Generation Pipeline first")
+                        }
+                        
+                        echo "DEBUG: Returning " + scripts.size() + " scripts"
+                        return scripts
+                    '''
+                ]
+            ])
+        
+        // Hidden parameter to trigger script refresh
+        string(name: 'SCRIPT_SOURCE', defaultValue: 'refresh', description: 'Hidden parameter to trigger script refresh')
+        
         string(name: 'TARGET_HOST', defaultValue: 'https://api.example.com', description: 'Target host URL for testing')
         string(name: 'API_TOKEN', defaultValue: '', description: 'API token for authentication (optional)')
         choice(name: 'ENVIRONMENT', choices: ['dev', 'staging', 'prod'], description: 'Target environment')
@@ -151,20 +190,12 @@ pipeline {
                         
                         echo "📊 Total scripts available: ${env.SCRIPTS_COUNT}"
                         echo ""
-                        echo "💡 To run a specific script, use the SELECTED_SCRIPT parameter:"
-                        echo "   Example: Rick_and_Morty_API_Test.py"
-                        echo "   Leave empty to auto-select the first available script"
+                        echo "🎯 Selected script: ${params.SELECTED_SCRIPT}"
                         echo ""
                         
-                        // If no script selected, use the first one
-                        if (!params.SELECTED_SCRIPT) {
-                            def firstScript = scriptFiles.split('\n')[0]
-                            env.SELECTED_SCRIPT = firstScript
-                            echo "🔄 Auto-selected script: ${firstScript}"
-                        } else {
-                            env.SELECTED_SCRIPT = params.SELECTED_SCRIPT
-                            echo "🎯 User-selected script: ${env.SELECTED_SCRIPT}"
-                        }
+                        // Set the selected script
+                        env.SELECTED_SCRIPT = params.SELECTED_SCRIPT
+                        
                     } else {
                         echo "❌ No scripts found in ${SCRIPTS_DIR}"
                         echo "💡 Please run the Script Generation Pipeline first to generate test scripts"
@@ -180,10 +211,15 @@ pipeline {
                 script {
                     echo "Validating selected script: ${env.SELECTED_SCRIPT}"
                     
+                    // Check if a valid script was selected
+                    if (params.SELECTED_SCRIPT == "No scripts found - Run Script Generation Pipeline first") {
+                        error "No scripts available. Please run the Script Generation Pipeline first to generate test scripts."
+                    }
+                    
                     // Check if script exists
                     def scriptExists = fileExists "${SCRIPTS_DIR}\\${env.SELECTED_SCRIPT}"
                     if (!scriptExists) {
-                        error "Script ${env.SELECTED_SCRIPT} not found. Please check the script name."
+                        error "Script ${env.SELECTED_SCRIPT} not found. Please check the script name or regenerate scripts."
                     }
                     
                     // Store script info in environment
