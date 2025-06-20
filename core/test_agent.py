@@ -11,8 +11,19 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 from pathlib import Path
 import requests
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+@dataclass
+class CommandResult:
+    """Stores the result of a shell command execution."""
+    command: str
+    success: bool = False
+    log_output: List[str] = field(default_factory=list)
+    error_message: Optional[str] = None
+    execution_time: float = 0.0
 
 @dataclass
 class TestConfig:
@@ -101,6 +112,42 @@ class LocustTestAgent:
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
         )
         self.logger = logging.getLogger(__name__)
+    
+    def execute_command(self, cmd: list) -> CommandResult:
+        """Executes a shell command and returns the result."""
+        result = CommandResult(command=" ".join(cmd))
+        start_time = time.time()
+        
+        self.logger.info(f"Executing command: {' '.join(cmd)}")
+        
+        try:
+            process = subprocess.run(cmd, capture_output=True, text=True, check=False, cwd=self.workspace_dir)
+            result.success = process.returncode == 0
+            
+            # Always log stdout and stderr for debugging
+            if process.stdout:
+                self.logger.info(f"Command stdout:\n{process.stdout}")
+            if process.stderr:
+                self.logger.warning(f"Command stderr:\n{process.stderr}")
+
+            if not result.success:
+                result.error_message = f"Test failed with return code {process.returncode}"
+                self.logger.error(f"Test execution failed: {result.error_message}")
+            
+            output_lines = process.stdout.split('\n') + process.stderr.split('\n')
+            result.log_output = [line.strip() for line in output_lines if line.strip()]
+
+        except FileNotFoundError:
+            result.error_message = f"Command not found: {cmd[0]}"
+            self.logger.error(f"Test execution failed: {result.error_message}")
+
+        except Exception as e:
+            result.error_message = f"Error executing command: {e}"
+            self.logger.error(f"Test execution failed: {result.error_message}")
+
+        finally:
+            result.execution_time = time.time() - start_time
+            return result
     
     def create_scenario_from_json(self, scenario_config: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -355,27 +402,20 @@ class LocustTestAgent:
                 cmd.extend(["--csv", csv_path])
                 result.csv_report_path = f"{csv_path}_stats.csv"
             
-            self.logger.info(f"Executing command: {' '.join(cmd)}")
-            
             # Execute command
-            result = subprocess.run(cmd, capture_output=True, text=True, shell=True)
+            command_result = self.execute_command(cmd)
             
             # Process output
-            output_lines = result.stdout.split('\n') + result.stderr.split('\n')
-            result.log_output = [line.strip() for line in output_lines if line.strip()]
-            
-            # Check if test was successful
-            result.success = result.returncode == 0
-            result.execution_time = time.time() - start_time
+            result.log_output = command_result.log_output
+            result.success = command_result.success
+            result.execution_time = command_result.execution_time
             
             if not result.success:
-                result.error_message = f"Test failed with return code {result.returncode}"
-                self.logger.error(f"Test execution failed: {result.error_message}")
+                result.error_message = command_result.error_message
             else:
                 self.logger.info("Test execution completed successfully")
-                
                 # Parse basic metrics from output
-                self._parse_metrics(result, output_lines)
+                self._parse_metrics(result, command_result.log_output)
             
             return result
             
@@ -537,39 +577,4 @@ class LocustTestAgent:
                 "workflow_success": False,
                 "error": str(e),
                 "timestamp": datetime.now().isoformat()
-            }
-
-    def execute_command(self, cmd: list) -> CommandResult:
-        """Executes a shell command and returns the result."""
-        result = CommandResult(command=" ".join(cmd))
-        start_time = time.time()
-        
-        self.logger.info(f"Executing command: {' '.join(cmd)}")
-        
-        try:
-            process = subprocess.run(cmd, capture_output=True, text=True, check=False, cwd=self.workspace_dir)
-            result.success = process.returncode == 0
-            
-            # Always log stdout and stderr for debugging
-            self.logger.info(f"Command stdout:\n{process.stdout}")
-            if process.stderr:
-                self.logger.warning(f"Command stderr:\n{process.stderr}")
-
-            if not result.success:
-                result.error_message = f"Test failed with return code {process.returncode}"
-                self.logger.error(f"Test execution failed: {result.error_message}")
-            
-            output_lines = process.stdout.split('\n') + process.stderr.split('\n')
-            result.log_output = [line.strip() for line in output_lines if line.strip()]
-
-        except FileNotFoundError:
-            result.error_message = f"Command not found: {cmd[0]}"
-            self.logger.error(f"Test execution failed: {result.error_message}")
-
-        except Exception as e:
-            result.error_message = f"Error executing command: {e}"
-            self.logger.error(f"Test execution failed: {result.error_message}")
-
-        finally:
-            result.execution_time = time.time() - start_time
-            return result 
+            } 
