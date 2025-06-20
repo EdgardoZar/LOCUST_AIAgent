@@ -362,8 +362,19 @@ except Exception as e:
                     // Push to main branch
                     bat """
                         echo DEBUG: Pushing to main branch
-                        git push origin main || echo "Push completed (no changes or already up to date)"
-                        echo DEBUG: Push completed
+                        echo DEBUG: Checking Git remote configuration
+                        git remote -v
+                        echo DEBUG: Checking Git credentials
+                        git config --list | findstr user
+                        echo DEBUG: Attempting push
+                        git push origin main
+                        if %ERRORLEVEL% NEQ 0 (
+                            echo DEBUG: Push failed with error code %ERRORLEVEL%
+                            echo DEBUG: This might be due to authentication or network issues
+                        ) else (
+                            echo DEBUG: Push completed successfully
+                        )
+                        echo DEBUG: Push operation finished
                     """
                     
                     echo "Script committed to main branch successfully"
