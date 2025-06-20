@@ -327,6 +327,8 @@ except Exception as e:
                         git branch
                         echo DEBUG: Current status:
                         git status
+                        echo DEBUG: Getting current branch name:
+                        git rev-parse --abbrev-ref HEAD
                     """
                     
                     // Copy generated script to a permanent location in the repository
@@ -349,10 +351,13 @@ except Exception as e:
                         echo DEBUG: Commit completed
                     """
                     
-                    // Push to main branch
+                    // Push to current branch (whatever it's called)
                     bat """
-                        echo DEBUG: Pushing to main branch
-                        git push origin main || echo "Push completed (no changes or already up to date)"
+                        echo DEBUG: Getting current branch for push
+                        git rev-parse --abbrev-ref HEAD > current_branch.txt
+                        set /p CURRENT_BRANCH=<current_branch.txt
+                        echo DEBUG: Pushing to branch: %CURRENT_BRANCH%
+                        git push origin %CURRENT_BRANCH% || echo "Push completed (no changes or already up to date)"
                         echo DEBUG: Push completed
                     """
                     
