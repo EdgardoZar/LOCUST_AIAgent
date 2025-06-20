@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 from pathlib import Path
 import requests
+import csv
 from dataclasses import dataclass, asdict, field
 
 # Set up logging
@@ -405,17 +406,22 @@ class LocustTestAgent:
             # Execute command
             command_result = self.execute_command(cmd)
             
-            # Process output
             result.log_output = command_result.log_output
-            result.success = command_result.success
             result.execution_time = command_result.execution_time
             
-            if not result.success:
-                result.error_message = command_result.error_message
+            # A locust run is "successful" if the process ran and we have a report,
+            # even if there are test failures (exit code 1).
+            if os.path.exists(result.csv_report_path):
+                self.logger.info("Test execution completed, CSV report found.")
+                result.success = True
+                self._parse_metrics_from_csv(result)
             else:
-                self.logger.info("Test execution completed successfully")
-                # Parse basic metrics from output
-                self._parse_metrics(result, command_result.log_output)
+                self.logger.warning("Could not find CSV report. Parsing from logs as a fallback.")
+                result.success = False # The run itself failed if no report was generated
+                self._parse_metrics_from_log(result, command_result.log_output)
+                
+            if not result.success and not result.error_message:
+                result.error_message = command_result.error_message
             
             return result
             
@@ -425,45 +431,63 @@ class LocustTestAgent:
             self.logger.error(f"Test execution error: {e}")
             return result
     
-    def _parse_metrics(self, result: TestResult, output_lines: List[str]):
-        """Parse basic metrics from Locust output."""
+    def _parse_metrics_from_log(self, result: TestResult, output_lines: List[str]):
+        """Parse basic metrics from Locust output as a fallback."""
+        self.logger.info("Attempting to parse metrics from log output...")
         try:
-            for line in output_lines:
-                if "Total requests" in line:
-                    # Extract total requests
-                    parts = line.split()
-                    for i, part in enumerate(parts):
-                        if part.isdigit() and i > 0 and "requests" in parts[i-1]:
-                            result.total_requests = int(part)
-                            break
-                
-                elif "Failed requests" in line:
-                    # Extract failed requests
-                    parts = line.split()
-                    for i, part in enumerate(parts):
-                        if part.isdigit() and i > 0 and "requests" in parts[i-1]:
-                            result.failed_requests = int(part)
-                            break
-                
-                elif "Average response time" in line:
-                    # Extract average response time
-                    parts = line.split()
-                    for i, part in enumerate(parts):
-                        if part.replace('.', '').isdigit() and i > 0 and "time" in parts[i-1]:
-                            result.avg_response_time = float(part)
-                            break
-                
-                elif "Requests/sec" in line:
-                    # Extract requests per second
-                    parts = line.split()
-                    for i, part in enumerate(parts):
-                        if part.replace('.', '').isdigit() and i > 0 and "sec" in parts[i-1]:
-                            result.requests_per_sec = float(part)
-                            break
-                            
+            aggregated_line = None
+            for line in reversed(output_lines):
+                if line.strip().startswith("Aggregated"):
+                    aggregated_line = line
+                    break
+            
+            if aggregated_line:
+                # Expected format: Aggregated  <reqs> <fails> | <avg> <min> <max> <med> | <rps> <frs>
+                parts = [p.strip() for p in aggregated_line.split('|')]
+                if len(parts) == 3:
+                    reqs_part = parts[0]
+                    stats_part = parts[1]
+                    rps_part = parts[2]
+                    
+                    reqs_fails_values = [v for v in reqs_part.split() if v.isdigit()]
+                    if len(reqs_fails_values) >= 2:
+                        result.total_requests = int(reqs_fails_values[-2])
+                        result.failed_requests = int(reqs_fails_values[-1])
+                    
+                    stats_values = [v for v in stats_part.split() if v.replace('.', '', 1).isdigit()]
+                    if len(stats_values) >= 1:
+                        result.avg_response_time = float(stats_values[0])
+
+                    rps_values = [v for v in rps_part.split() if v.replace('.', '', 1).isdigit()]
+                    if len(rps_values) >= 1:
+                        result.requests_per_sec = float(rps_values[0])
+                    self.logger.info("Successfully parsed metrics from log.")
+                else:
+                    self.logger.warning("Could not parse aggregated log line: unexpected format.")
+            else:
+                self.logger.warning("Could not find 'Aggregated' line in log output.")
         except Exception as e:
-            self.logger.warning(f"Error parsing metrics: {e}")
-    
+            self.logger.warning(f"Error parsing metrics from log: {e}")
+
+    def _parse_metrics_from_csv(self, result: TestResult):
+        """Parse metrics from the Locust CSV stats file."""
+        try:
+            with open(result.csv_report_path, 'r', encoding='utf-8') as csvfile:
+                reader = csv.DictReader(csvfile)
+                for row in reader:
+                    if row['Name'] == 'Aggregated':
+                        result.total_requests = int(row['Request Count'])
+                        result.failed_requests = int(row['Failure Count'])
+                        result.avg_response_time = float(row['Average Response Time'])
+                        result.requests_per_sec = float(row['Requests/s'])
+                        self.logger.info(f"Successfully parsed metrics from CSV for 'Aggregated' row.")
+                        return
+            self.logger.warning("Could not find 'Aggregated' row in CSV stats file.")
+        except FileNotFoundError:
+            self.logger.warning(f"CSV stats file not found at: {result.csv_report_path}")
+        except Exception as e:
+            self.logger.warning(f"Error parsing metrics from CSV: {e}")
+
     def analyze_results(self, result: TestResult) -> Dict[str, Any]:
         """
         Analyze test results and provide insights.

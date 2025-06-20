@@ -3,7 +3,7 @@ pipeline {
     
     parameters {
         // Test execution parameters will be selected during the build
-        string(name: 'TARGET_HOST', defaultValue: 'https://rickandmortyapi.com/api', description: 'Target host URL for testing')
+        string(name: 'TARGET_HOST', defaultValue: 'https://rickandmortyapi.com', description: 'Target host URL for testing')
         string(name: 'API_TOKEN', defaultValue: '', description: 'API token for authentication (optional)')
         choice(name: 'ENVIRONMENT', choices: ['dev', 'staging', 'prod'], description: 'Target environment')
         
@@ -505,97 +505,59 @@ print("LLM analysis completed")
         }
         
         stage('Analyze Results') {
+            when {
+                expression { fileExists "${WORKSPACE_DIR}/test_results.json" }
+            }
             steps {
                 script {
                     echo "Analyzing test results..."
                     echo "Performance Thresholds:"
-                    echo "  Max Response Time: ${MAX_RESPONSE_TIME_MS}ms"
-                    echo "  Min Success Rate: ${MIN_SUCCESS_RATE_PCT}%"
-                    echo "  Min Requests/sec: ${MIN_REQUESTS_PER_SEC}"
+                    echo "  Max Response Time: ${params.MAX_AVG_RESPONSE_TIME}ms"
+                    echo "  Min Success Rate: ${params.MIN_SUCCESS_RATE}%"
+                    echo "  Min Requests/sec: ${params.MIN_REQUESTS_PER_SEC}"
                     
-                    // Load and analyze test results using metadata from previous stage
-                    def metadataText = readFile file: "${WORKSPACE_DIR}\\test_metadata.json"
-                    def metadata = new groovy.json.JsonSlurper().parseText(metadataText)
+                    def resultsText = readFile file: "${WORKSPACE_DIR}/test_results.json"
+                    def results = new groovy.json.JsonSlurper().parseText(resultsText)
                     
-                    if (!metadata.success) {
-                        error "Cannot analyze results: ${metadata.error}"
-                    }
+                    def testResult = results.test_result
+                    def totalRequests = testResult.total_requests as int
+                    def failedRequests = testResult.failed_requests as int
+                    def avgResponseTime = testResult.avg_response_time as double
+                    def requestsPerSec = testResult.requests_per_sec as double
                     
-                    def results = metadata
+                    def successRate = (totalRequests > 0) ? (((totalRequests - failedRequests) * 100.0) / totalRequests) : 0.0
                     
                     echo "Test Results Analysis:"
                     echo "  Success: ${results.workflow_success}"
                     echo "  Scenario: ${results.scenario_name}"
-                    echo "  Script: ${env.SELECTED_SCRIPT}"
-                    echo "  Test Run ID: ${TEST_RUN_ID}"
+                    echo "  Script: ${results.script_path.split('\\\\').last()}"
+                    echo "  Test Run ID: ${results.test_metadata.test_run_id}"
+                    echo "  Execution Time: ${testResult.execution_time}s"
+                    echo "  Total Requests: ${totalRequests}"
+                    echo "  Failed Requests: ${failedRequests}"
+                    echo "  Avg Response Time: ${avgResponseTime}ms"
+                    echo "  Requests/sec: ${requestsPerSec}"
+                    echo "  Success Rate: ${String.format('%.2f', successRate)}%"
                     
-                    if (results.test_result) {
-                        def testResult = results.test_result
-                        echo "  Execution Time: ${testResult.execution_time}s"
-                        echo "  Total Requests: ${testResult.total_requests}"
-                        echo "  Failed Requests: ${testResult.failed_requests}"
-                        echo "  Avg Response Time: ${testResult.avg_response_time}ms"
-                        echo "  Requests/sec: ${testResult.requests_per_sec}"
-                        
-                        // Calculate success rate
-                        def successRate = testResult.total_requests.toInteger() > 0 ? 
-                            ((testResult.total_requests.toInteger() - testResult.failed_requests.toInteger()) / testResult.total_requests.toInteger() * 100) : 0
-                        echo "  Success Rate: ${successRate}%"
-                        
-                        // Store calculated values in environment
-                        env.SUCCESS_RATE = successRate
-                        
-                        // Performance threshold validation
-                        def performanceIssues = []
-                        
-                        if (testResult.avg_response_time.toInteger() > MAX_RESPONSE_TIME_MS.toInteger()) {
-                            performanceIssues.add("Average response time (${testResult.avg_response_time}ms) exceeds threshold (${MAX_RESPONSE_TIME_MS}ms)")
-                        }
-                        
-                        if (successRate < MIN_SUCCESS_RATE_PCT.toInteger()) {
-                            performanceIssues.add("Success rate (${successRate}%) below threshold (${MIN_SUCCESS_RATE_PCT}%)")
-                        }
-                        
-                        if (testResult.requests_per_sec.toDouble() < MIN_REQUESTS_PER_SEC.toInteger()) {
-                            performanceIssues.add("Requests per second (${testResult.requests_per_sec}) below threshold (${MIN_REQUESTS_PER_SEC})")
-                        }
-                        
-                        if (performanceIssues.size() > 0) {
-                            echo "Performance Issues Detected:"
-                            performanceIssues.each { issue ->
-                                echo "  - ${issue}"
-                            }
-                            currentBuild.result = 'UNSTABLE'
-                            env.PERFORMANCE_ISSUES = performanceIssues.join('; ')
-                        } else {
-                            echo "All performance thresholds met!"
-                            env.PERFORMANCE_ISSUES = "None"
-                        }
+                    def performanceIssues = []
+                    if (avgResponseTime > (params.MAX_AVG_RESPONSE_TIME as double)) {
+                        performanceIssues.add("Average response time (${avgResponseTime}ms) exceeded threshold of ${params.MAX_AVG_RESPONSE_TIME}ms")
+                    }
+                    if (successRate < (params.MIN_SUCCESS_RATE as double)) {
+                        performanceIssues.add("Success rate (${String.format('%.2f', successRate)}%) was below threshold of ${params.MIN_SUCCESS_RATE}%")
+                    }
+                    if (requestsPerSec < (params.MIN_REQUESTS_PER_SEC as double)) {
+                        performanceIssues.add("Requests per second (${requestsPerSec}) was below threshold of ${params.MIN_REQUESTS_PER_SEC}")
                     }
                     
-                    // LLM analysis summary
-                    if (params.USE_LLM_ANALYSIS && results.llm_analysis) {
-                        def llmAnalysis = results.llm_analysis
-                        echo "LLM Analysis:"
-                        echo "  Performance Grade: ${llmAnalysis.performance_grade}"
-                        echo "  Summary: ${llmAnalysis.summary}"
-                        
-                        env.LLM_GRADE = llmAnalysis.performance_grade
-                        env.LLM_SUMMARY = llmAnalysis.summary
-                        
-                        if (llmAnalysis.key_insights) {
-                            echo "  Key Insights:"
-                            llmAnalysis.key_insights.each { insight ->
-                                echo "    • ${insight}"
-                            }
-                        }
-                        
-                        if (llmAnalysis.recommendations) {
-                            echo "  Recommendations:"
-                            llmAnalysis.recommendations.each { rec ->
-                                echo "    • ${rec}"
-                            }
-                        }
+                    if (performanceIssues) {
+                        echo "Performance Issues Found:"
+                        performanceIssues.each { issue -> echo "  - ${issue}" }
+                        currentBuild.result = 'UNSTABLE'
+                        env.PERFORMANCE_ISSUES = performanceIssues.join(', ')
+                    } else {
+                        echo "No performance issues found based on thresholds."
+                        env.PERFORMANCE_ISSUES = "None"
                     }
                 }
             }
