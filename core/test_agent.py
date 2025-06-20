@@ -358,27 +358,18 @@ class LocustTestAgent:
             self.logger.info(f"Executing command: {' '.join(cmd)}")
             
             # Execute command
-            process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                universal_newlines=True,
-                cwd=self.workspace_dir
-            )
-            
-            # Capture output
-            stdout, stderr = process.communicate()
+            result = subprocess.run(cmd, capture_output=True, text=True, shell=True)
             
             # Process output
-            output_lines = stdout.split('\n') + stderr.split('\n')
+            output_lines = result.stdout.split('\n') + result.stderr.split('\n')
             result.log_output = [line.strip() for line in output_lines if line.strip()]
             
             # Check if test was successful
-            result.success = process.returncode == 0
+            result.success = result.returncode == 0
             result.execution_time = time.time() - start_time
             
             if not result.success:
-                result.error_message = f"Test failed with return code {process.returncode}"
+                result.error_message = f"Test failed with return code {result.returncode}"
                 self.logger.error(f"Test execution failed: {result.error_message}")
             else:
                 self.logger.info("Test execution completed successfully")
@@ -546,4 +537,39 @@ class LocustTestAgent:
                 "workflow_success": False,
                 "error": str(e),
                 "timestamp": datetime.now().isoformat()
-            } 
+            }
+
+    def execute_command(self, cmd: list) -> CommandResult:
+        """Executes a shell command and returns the result."""
+        result = CommandResult(command=" ".join(cmd))
+        start_time = time.time()
+        
+        self.logger.info(f"Executing command: {' '.join(cmd)}")
+        
+        try:
+            process = subprocess.run(cmd, capture_output=True, text=True, check=False, cwd=self.workspace_dir)
+            result.success = process.returncode == 0
+            
+            # Always log stdout and stderr for debugging
+            self.logger.info(f"Command stdout:\n{process.stdout}")
+            if process.stderr:
+                self.logger.warning(f"Command stderr:\n{process.stderr}")
+
+            if not result.success:
+                result.error_message = f"Test failed with return code {process.returncode}"
+                self.logger.error(f"Test execution failed: {result.error_message}")
+            
+            output_lines = process.stdout.split('\n') + process.stderr.split('\n')
+            result.log_output = [line.strip() for line in output_lines if line.strip()]
+
+        except FileNotFoundError:
+            result.error_message = f"Command not found: {cmd[0]}"
+            self.logger.error(f"Test execution failed: {result.error_message}")
+
+        except Exception as e:
+            result.error_message = f"Error executing command: {e}"
+            self.logger.error(f"Test execution failed: {result.error_message}")
+
+        finally:
+            result.execution_time = time.time() - start_time
+            return result 

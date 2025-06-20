@@ -480,23 +480,26 @@ print("LLM analysis completed")
                     echo "Archiving test results..."
                     echo "Test Run ID: ${TEST_RUN_ID}"
                     
-                    // Archive test results and reports
-                    archiveArtifacts artifacts: "test_workspace\\test_results.json", fingerprint: true
+                    // Archive HTML report if it exists
+                    archiveArtifacts(
+                        artifacts: 'test_reports/**/*.html', 
+                        allowEmptyArchive: true, 
+                        fingerprint: true
+                    )
                     
-                    if (params.USE_LLM_ANALYSIS) {
-                        archiveArtifacts artifacts: "test_workspace\\test_results_with_llm.json", fingerprint: true
-                    }
-                    
-                    // Archive generated reports
-                    if (params.GENERATE_HTML_REPORT) {
-                        archiveArtifacts artifacts: "test_reports\\**\\*.html", fingerprint: true
-                    }
-                    
-                    if (params.GENERATE_CSV_REPORT) {
-                        archiveArtifacts artifacts: "test_reports\\**\\*.csv", fingerprint: true
-                    }
-                    
-                    echo "Results archived successfully"
+                    // Archive CSV report if it exists
+                    archiveArtifacts(
+                        artifacts: 'test_reports/**/*.csv', 
+                        allowEmptyArchive: true, 
+                        fingerprint: true
+                    )
+
+                    // Archive JSON results
+                    archiveArtifacts(
+                        artifacts: 'test_workspace/test_results.json', 
+                        allowEmptyArchive: true, 
+                        fingerprint: true
+                    )
                 }
             }
         }
