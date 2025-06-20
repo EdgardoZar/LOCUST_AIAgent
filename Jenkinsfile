@@ -63,7 +63,16 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                checkout scm
+                checkout([$class: 'GitSCM', 
+                    branches: [[name: '*/main']], 
+                    doGenerateSubmoduleConfigurations: false, 
+                    extensions: [], 
+                    submoduleCfg: [], 
+                    userRemoteConfigs: [[
+                        credentialsId: 'github-credentials',
+                        url: 'https://github.com/EdgardoZar/LOCUST_AIAgent.git'
+                    ]]
+                ])
                 echo "Checked out code from ${env.BRANCH_NAME}"
                 echo "Pipeline Mode: ${params.PIPELINE_MODE}"
             }
