@@ -60,7 +60,16 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                checkout scm
+                checkout([$class: 'GitSCM', 
+                    branches: [[name: '*/main']], 
+                    doGenerateSubmoduleConfigurations: false, 
+                    extensions: [], 
+                    submoduleCfg: [], 
+                    userRemoteConfigs: [[
+                        credentialsId: 'github-credentials',
+                        url: 'https://github.com/EdgardoZar/LOCUST_AIAgent.git'
+                    ]]
+                ])
                 script {
                     echo "=== Test Execution Pipeline ==="
                     echo "Build Number: ${env.BUILD_NUMBER}"
