@@ -331,6 +331,14 @@ except Exception as e:
                         git rev-parse --abbrev-ref HEAD
                     """
                     
+                    // Ensure we're on main branch (not detached HEAD)
+                    bat """
+                        echo DEBUG: Checking out main branch to avoid detached HEAD
+                        git checkout main
+                        echo DEBUG: Current branch after checkout:
+                        git branch
+                    """
+                    
                     // Copy generated script to a permanent location in the repository
                     bat """
                         echo DEBUG: Copying script to generated_scripts folder
@@ -351,13 +359,10 @@ except Exception as e:
                         echo DEBUG: Commit completed
                     """
                     
-                    // Push to current branch (whatever it's called)
+                    // Push to main branch
                     bat """
-                        echo DEBUG: Getting current branch for push
-                        git rev-parse --abbrev-ref HEAD > current_branch.txt
-                        set /p CURRENT_BRANCH=<current_branch.txt
-                        echo DEBUG: Pushing to branch: %CURRENT_BRANCH%
-                        git push origin %CURRENT_BRANCH% || echo "Push completed (no changes or already up to date)"
+                        echo DEBUG: Pushing to main branch
+                        git push origin main || echo "Push completed (no changes or already up to date)"
                         echo DEBUG: Push completed
                     """
                     
