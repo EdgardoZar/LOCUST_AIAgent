@@ -323,6 +323,9 @@ except Exception as e:
                     echo "Script: ${env.GENERATED_SCRIPT}"
                     echo "DEBUG: Committing to main branch"
                     
+                    // Define commit message outside credentials block
+                    def commitMessage = params.GIT_COMMIT_MESSAGE ?: "Generated script: ${params.SCENARIO_NAME} - ${TIMESTAMP} - ${BUILD_INFO}"
+                    
                     // Configure Git with credentials
                     withCredentials([usernamePassword(credentialsId: 'github-credentials', usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD')]) {
                         bat """
@@ -362,7 +365,6 @@ except Exception as e:
                         """
                         
                         // Add and commit the script
-                        def commitMessage = params.GIT_COMMIT_MESSAGE ?: "Generated script: ${params.SCENARIO_NAME} - ${TIMESTAMP} - ${BUILD_INFO}"
                         bat """
                             echo DEBUG: Adding files to Git
                             git add generated_scripts\\*.py
