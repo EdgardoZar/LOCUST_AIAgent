@@ -20,7 +20,6 @@ pipeline {
         TIMESTAMP = "${new Date().format('yyyyMMdd_HHmmss')}"
         
         // Git configuration
-        GIT_SCRIPTS_BRANCH = "generated_scripts"  // Force underscore version
         GIT_EMAIL = "${env.JENKINS_GIT_EMAIL ?: 'jenkins@example.com'}"
         GIT_USER = "${env.JENKINS_GIT_USER ?: 'Jenkins Pipeline'}"
         
@@ -311,9 +310,9 @@ except Exception as e:
             steps {
                 script {
                     echo "Committing generated script to Git repository..."
-                    echo "Branch: ${GIT_SCRIPTS_BRANCH}"
+                    echo "Branch: main"
                     echo "Script: ${env.GENERATED_SCRIPT}"
-                    echo "DEBUG: Using branch name: '${GIT_SCRIPTS_BRANCH}'"
+                    echo "DEBUG: Committing to main branch"
                     
                     // Configure Git
                     bat """
@@ -324,17 +323,10 @@ except Exception as e:
                     
                     // Check current branch and status
                     bat """
-                        echo DEBUG: Current branch before checkout:
-                        git branch -a
+                        echo DEBUG: Current branch:
+                        git branch
                         echo DEBUG: Current status:
                         git status
-                    """
-                    
-                    // Create scripts branch if it doesn't exist
-                    bat """
-                        echo DEBUG: Attempting to checkout/create branch ${GIT_SCRIPTS_BRANCH}
-                        git checkout -b ${GIT_SCRIPTS_BRANCH} 2>nul || git checkout ${GIT_SCRIPTS_BRANCH}
-                        echo DEBUG: Branch checkout completed
                     """
                     
                     // Copy generated script to a permanent location in the repository
@@ -345,11 +337,11 @@ except Exception as e:
                         echo DEBUG: Script copy completed
                     """
                     
-                    // Add and commit the script (force add to ensure latest version)
+                    // Add and commit the script
                     def commitMessage = params.GIT_COMMIT_MESSAGE ?: "Generated script: ${params.SCENARIO_NAME} - ${TIMESTAMP} - ${BUILD_INFO}"
                     bat """
                         echo DEBUG: Adding files to Git
-                        git add -f generated_scripts\\*.py
+                        git add generated_scripts\\*.py
                         echo DEBUG: Files added, checking status
                         git status
                         echo DEBUG: Attempting commit
@@ -357,23 +349,14 @@ except Exception as e:
                         echo DEBUG: Commit completed
                     """
                     
-                    // Push to remote (don't fail if no changes)
+                    // Push to main branch
                     bat """
-                        echo DEBUG: Checking if push is needed
-                        git ls-remote --heads origin ${GIT_SCRIPTS_BRANCH} 2>nul | findstr ${GIT_SCRIPTS_BRANCH} >nul && echo "Remote branch exists" || echo "Remote branch does not exist - first push"
-                        echo DEBUG: Attempting to push to origin ${GIT_SCRIPTS_BRANCH}
-                        git push -u origin ${GIT_SCRIPTS_BRANCH} || echo "Push completed (no changes or already up to date)"
+                        echo DEBUG: Pushing to main branch
+                        git push origin main || echo "Push completed (no changes or already up to date)"
                         echo DEBUG: Push completed
                     """
                     
-                    // Return to main branch
-                    bat """
-                        echo DEBUG: Returning to main branch
-                        git checkout main
-                        echo DEBUG: Git operations completed
-                    """
-                    
-                    echo "Script processing completed for Git branch: ${GIT_SCRIPTS_BRANCH}"
+                    echo "Script committed to main branch successfully"
                     echo "Commit message: ${commitMessage}"
                 }
             }
@@ -389,7 +372,7 @@ except Exception as e:
                 echo "Result: ${currentBuild.result}"
                 echo "Build URL: ${env.BUILD_URL}"
                 echo "Generated Script: ${env.GENERATED_SCRIPT}"
-                echo "Scripts Branch: ${GIT_SCRIPTS_BRANCH}"
+                echo "Branch: main"
                 echo "Environment: ${params.ENVIRONMENT}"
                 echo "Scenario Steps: ${env.SCENARIO_STEPS_COUNT}"
             }
@@ -399,7 +382,7 @@ except Exception as e:
             echo "✅ Script generated successfully!"
             echo "📁 Script: ${env.GENERATED_SCRIPT}"
             echo "📦 Script archived and ready for download"
-            echo "🌿 Script committed to Git branch: ${GIT_SCRIPTS_BRANCH}"
+            echo "🌿 Script committed to main branch"
             echo "🔗 You can now use this script in the Test Execution Pipeline"
         }
         
