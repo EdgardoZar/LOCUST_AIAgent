@@ -100,12 +100,10 @@ class LocustTestAgent:
         """
         self.workspace_dir = workspace_dir or os.getcwd()
         self.scripts_dir = os.path.join(self.workspace_dir, "generated_scripts")
-        self.reports_dir = os.path.join(self.workspace_dir, "generated_reports")
         self.script_generator = script_generator
         
         # Create directories if they don't exist
         os.makedirs(self.scripts_dir, exist_ok=True)
-        os.makedirs(self.reports_dir, exist_ok=True)
         
         # Setup logging
         logging.basicConfig(
@@ -376,6 +374,9 @@ class LocustTestAgent:
         )
         
         try:
+            # Ensure the output directory for reports exists
+            os.makedirs(config.output_dir, exist_ok=True)
+
             # Build command
             cmd = [
                 "locust", "-f", script_path,
@@ -393,13 +394,13 @@ class LocustTestAgent:
             
             if config.generate_html:
                 html_filename = f"{safe_name}_{timestamp}.html"
-                html_path = os.path.join(self.reports_dir, html_filename)
+                html_path = os.path.join(config.output_dir, html_filename)
                 cmd.extend(["--html", html_path])
                 result.html_report_path = html_path
             
             if config.generate_csv:
                 csv_prefix = f"{safe_name}_{timestamp}"
-                csv_path = os.path.join(self.reports_dir, csv_prefix)
+                csv_path = os.path.join(config.output_dir, csv_prefix)
                 cmd.extend(["--csv", csv_path])
                 result.csv_report_path = f"{csv_path}_stats.csv"
             

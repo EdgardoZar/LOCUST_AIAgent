@@ -36,9 +36,13 @@ pipeline {
         // Python and workspace configuration
         PYTHON_VERSION = "${env.PYTHON_VERSION ?: '3.9'}"
         WORKSPACE_DIR = "${WORKSPACE}\\test_workspace"
-        REPORTS_DIR = "${WORKSPACE}\\test_reports"
+        REPORTS_DIR = "${WORKSPACE}\\generated_reports"
         SCRIPTS_DIR = "${WORKSPACE}\\generated_scripts"
         TIMESTAMP = "${new Date().format('yyyyMMdd_HHmmss')}"
+        
+        // Git settings
+        GIT_EMAIL = "jenkins@example.com"
+        GIT_USER = "Jenkins Pipeline"
         
         // Build information
         BUILD_INFO = "Build #${env.BUILD_NUMBER} - ${env.BUILD_ID}"
@@ -482,14 +486,14 @@ print("LLM analysis completed")
                     
                     // Archive HTML report if it exists
                     archiveArtifacts(
-                        artifacts: 'test_reports/**/*.html', 
+                        artifacts: 'generated_reports/**/*.html', 
                         allowEmptyArchive: true, 
                         fingerprint: true
                     )
                     
                     // Archive CSV report if it exists
                     archiveArtifacts(
-                        artifacts: 'test_reports/**/*.csv', 
+                        artifacts: 'generated_reports/**/*.csv', 
                         allowEmptyArchive: true, 
                         fingerprint: true
                     )
@@ -500,6 +504,38 @@ print("LLM analysis completed")
                         allowEmptyArchive: true, 
                         fingerprint: true
                     )
+                }
+            }
+        }
+        
+        stage('Commit Reports to Git') {
+            steps {
+                script {
+                    echo "Committing generated reports to Git repository..."
+                    
+                    withCredentials([usernamePassword(credentialsId: 'github-credentials', usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD')]) {
+                        bat """
+                            echo DEBUG: Configuring Git...
+                            git config user.email "${GIT_EMAIL}"
+                            git config user.name "${GIT_USER}"
+                            
+                            echo DEBUG: Pulling latest changes...
+                            git pull https://%GIT_USERNAME%:%GIT_PASSWORD%@github.com/EdgardoZar/LOCUST_AIAgent.git main
+                        """
+                        
+                        def commitMessage = "Feat: Add test reports for build #${env.BUILD_NUMBER}"
+                        bat """
+                            echo DEBUG: Adding reports to Git...
+                            git add "${REPORTS_DIR}\\*.*"
+                            
+                            echo DEBUG: Committing reports...
+                            git diff --cached --quiet && echo "No new reports to commit" || git commit -m "${commitMessage}"
+                            
+                            echo DEBUG: Pushing reports to Git...
+                            git push https://%GIT_USERNAME%:%GIT_PASSWORD%@github.com/EdgardoZar/LOCUST_AIAgent.git main
+                        """
+                    }
+                    echo "Reports committed to main branch successfully."
                 }
             }
         }
@@ -572,13 +608,13 @@ print("LLM analysis completed")
                     echo "Publishing HTML report..."
                     
                     // Check if HTML report exists
-                    def htmlReportExists = fileExists "test_reports\\*.html"
+                    def htmlReportExists = fileExists "generated_reports\\*.html"
                     if (htmlReportExists) {
                         publishHTML([
                             allowMissing: false,
                             alwaysLinkToLastBuild: true,
                             keepAll: true,
-                            reportDir: 'test_reports',
+                            reportDir: 'generated_reports',
                             reportFiles: '*.html',
                             reportName: 'Locust Test Report',
                             reportTitles: 'Performance Test Results'
