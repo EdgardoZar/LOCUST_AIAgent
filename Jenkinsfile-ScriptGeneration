@@ -319,33 +319,59 @@ except Exception as e:
                     bat """
                         git config user.email "${GIT_EMAIL}"
                         git config user.name "${GIT_USER}"
+                        echo DEBUG: Git config completed
+                    """
+                    
+                    // Check current branch and status
+                    bat """
+                        echo DEBUG: Current branch before checkout:
+                        git branch -a
+                        echo DEBUG: Current status:
+                        git status
                     """
                     
                     // Create scripts branch if it doesn't exist
                     bat """
+                        echo DEBUG: Attempting to checkout/create branch ${GIT_SCRIPTS_BRANCH}
                         git checkout -b ${GIT_SCRIPTS_BRANCH} 2>nul || git checkout ${GIT_SCRIPTS_BRANCH}
+                        echo DEBUG: Branch checkout completed
                     """
                     
                     // Copy generated script to a permanent location in the repository
                     bat """
+                        echo DEBUG: Copying script to generated_scripts folder
                         if not exist "generated_scripts" mkdir "generated_scripts"
                         copy "${env.GENERATED_SCRIPT}" "generated_scripts\\"
+                        echo DEBUG: Script copy completed
                     """
                     
                     // Add and commit the script (force add to ensure latest version)
                     def commitMessage = params.GIT_COMMIT_MESSAGE ?: "Generated script: ${params.SCENARIO_NAME} - ${TIMESTAMP} - ${BUILD_INFO}"
                     bat """
+                        echo DEBUG: Adding files to Git
                         git add -f generated_scripts\\*.py
+                        echo DEBUG: Files added, checking status
+                        git status
+                        echo DEBUG: Attempting commit
                         git diff --cached --quiet && echo "No changes to commit - script is identical" || git commit -m "${commitMessage}"
+                        echo DEBUG: Commit completed
                     """
                     
                     // Push to remote (don't fail if no changes)
                     bat """
+                        echo DEBUG: Checking if push is needed
+                        git log origin/${GIT_SCRIPTS_BRANCH}..HEAD --oneline 2>nul || echo "No remote branch exists yet"
+                        echo DEBUG: Attempting to push to origin ${GIT_SCRIPTS_BRANCH}
                         git push origin ${GIT_SCRIPTS_BRANCH} || echo "Push completed (no changes or already up to date)"
+                        echo DEBUG: Push completed
                     """
                     
                     // Return to main branch
-                    bat "git checkout main"
+                    bat """
+                        echo DEBUG: Returning to main branch
+                        git checkout main
+                        echo DEBUG: Git operations completed
+                    """
                     
                     echo "Script processing completed for Git branch: ${GIT_SCRIPTS_BRANCH}"
                     echo "Commit message: ${commitMessage}"
