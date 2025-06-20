@@ -39,9 +39,6 @@ pipeline {
         SCRIPTS_DIR = "${WORKSPACE}\\generated_scripts"
         TIMESTAMP = "${new Date().format('yyyyMMdd_HHmmss')}"
         
-        // Git configuration
-        GIT_SCRIPTS_BRANCH = "${env.GIT_SCRIPTS_BRANCH ?: 'generated-scripts'}"
-        
         // Build information
         BUILD_INFO = "Build #${env.BUILD_NUMBER} - ${env.BUILD_ID}"
         JOB_NAME = "${env.JOB_NAME}"
@@ -88,7 +85,6 @@ pipeline {
                 script {
                     echo "Setting up test environment..."
                     echo "Python Version: ${PYTHON_VERSION}"
-                    echo "Scripts Branch: ${GIT_SCRIPTS_BRANCH}"
                     echo "Test Run ID: ${TEST_RUN_ID}"
                     echo "Performance Thresholds:"
                     echo "  Max Response Time: ${MAX_RESPONSE_TIME_MS}ms"
@@ -117,16 +113,19 @@ pipeline {
         stage('List Available Scripts') {
             steps {
                 script {
-                    echo "Fetching available scripts from Git..."
-                    echo "Branch: ${GIT_SCRIPTS_BRANCH}"
+                    echo "Listing available scripts from generated_scripts folder..."
+                    echo "Location: ${SCRIPTS_DIR}"
                     
-                    // Fetch scripts branch
+                    // Ensure we're on main branch and pull latest changes
                     bat """
-                        git fetch origin ${GIT_SCRIPTS_BRANCH}:${GIT_SCRIPTS_BRANCH} || echo "Branch not found"
-                        git checkout ${GIT_SCRIPTS_BRANCH} || echo "Could not checkout scripts branch"
+                        echo DEBUG: Ensuring we're on main branch
+                        git checkout main
+                        echo DEBUG: Pulling latest changes from remote main
+                        git pull origin main
+                        echo DEBUG: Pull completed
                     """
                     
-                    // List available scripts
+                    // List available scripts from the generated_scripts folder
                     def scriptFiles = bat(script: "dir ${SCRIPTS_DIR}\\*.py /b", returnStdout: true).trim()
                     if (scriptFiles) {
                         echo "Available scripts:"
@@ -147,11 +146,8 @@ pipeline {
                             env.SELECTED_SCRIPT = params.SELECTED_SCRIPT
                         }
                     } else {
-                        error "No scripts found in ${SCRIPTS_DIR}. Please run the Script Generation Pipeline first."
+                        error "No scripts found in ${SCRIPTS_DIR}. Please run the Script Generation Pipeline first to generate test scripts."
                     }
-                    
-                    // Return to main branch
-                    bat "git checkout main"
                     
                     echo "Selected script: ${env.SELECTED_SCRIPT}"
                     echo "Total scripts available: ${env.SCRIPTS_COUNT}"
@@ -218,12 +214,8 @@ pipeline {
                     
                     writeFile file: "${WORKSPACE_DIR}\\test_config.json", text: groovy.json.JsonOutput.toJson(testConfig)
                     
-                    // Fetch the selected script
-                    bat """
-                        git fetch origin ${GIT_SCRIPTS_BRANCH}:${GIT_SCRIPTS_BRANCH}
-                        git checkout ${GIT_SCRIPTS_BRANCH} -- ${SCRIPTS_DIR}\\${env.SELECTED_SCRIPT}
-                        git checkout main
-                    """
+                    // Script is already available in generated_scripts folder on main branch
+                    echo "Using script: ${SCRIPTS_DIR}\\${env.SELECTED_SCRIPT}"
                     
                     // Write the Python script to a file
                     def executeTestScript = '''
