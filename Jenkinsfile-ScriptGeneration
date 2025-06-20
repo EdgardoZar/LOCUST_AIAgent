@@ -20,7 +20,7 @@ pipeline {
         TIMESTAMP = "${new Date().format('yyyyMMdd_HHmmss')}"
         
         // Git configuration
-        GIT_SCRIPTS_BRANCH = "${env.GIT_SCRIPTS_BRANCH ?: 'generated_scripts'}"
+        GIT_SCRIPTS_BRANCH = "generated_scripts"  // Force underscore version
         GIT_EMAIL = "${env.JENKINS_GIT_EMAIL ?: 'jenkins@example.com'}"
         GIT_USER = "${env.JENKINS_GIT_USER ?: 'Jenkins Pipeline'}"
         
@@ -313,6 +313,7 @@ except Exception as e:
                     echo "Committing generated script to Git repository..."
                     echo "Branch: ${GIT_SCRIPTS_BRANCH}"
                     echo "Script: ${env.GENERATED_SCRIPT}"
+                    echo "DEBUG: Using branch name: '${GIT_SCRIPTS_BRANCH}'"
                     
                     // Configure Git
                     bat """
