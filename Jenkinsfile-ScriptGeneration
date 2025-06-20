@@ -314,68 +314,69 @@ except Exception as e:
                     echo "Script: ${env.GENERATED_SCRIPT}"
                     echo "DEBUG: Committing to main branch"
                     
-                    // Configure Git
-                    bat """
-                        git config user.email "${GIT_EMAIL}"
-                        git config user.name "${GIT_USER}"
-                        echo DEBUG: Git config completed
-                    """
-                    
-                    // Check current branch and status
-                    bat """
-                        echo DEBUG: Current branch:
-                        git branch
-                        echo DEBUG: Current status:
-                        git status
-                        echo DEBUG: Getting current branch name:
-                        git rev-parse --abbrev-ref HEAD
-                    """
-                    
-                    // Ensure we're on main branch (not detached HEAD)
-                    bat """
-                        echo DEBUG: Checking out main branch to avoid detached HEAD
-                        git checkout main
-                        echo DEBUG: Current branch after checkout:
-                        git branch
-                    """
-                    
-                    // Copy generated script to a permanent location in the repository
-                    bat """
-                        echo DEBUG: Copying script to generated_scripts folder
-                        if not exist "generated_scripts" mkdir "generated_scripts"
-                        copy "${env.GENERATED_SCRIPT}" "generated_scripts\\"
-                        echo DEBUG: Script copy completed
-                    """
-                    
-                    // Add and commit the script
-                    def commitMessage = params.GIT_COMMIT_MESSAGE ?: "Generated script: ${params.SCENARIO_NAME} - ${TIMESTAMP} - ${BUILD_INFO}"
-                    bat """
-                        echo DEBUG: Adding files to Git
-                        git add generated_scripts\\*.py
-                        echo DEBUG: Files added, checking status
-                        git status
-                        echo DEBUG: Attempting commit
-                        git diff --cached --quiet && echo "No changes to commit - script is identical" || git commit -m "${commitMessage}"
-                        echo DEBUG: Commit completed
-                    """
-                    
-                    // Push to main branch
-                    bat """
-                        echo DEBUG: Pushing to main branch
-                        echo DEBUG: Checking Git remote configuration
-                        git remote -v
-                        echo DEBUG: Checking Git credentials
-                        git config --list | findstr user
-                        echo DEBUG: Attempting push
-                        git push origin main
-                        if %ERRORLEVEL% NEQ 0 (
-                            echo DEBUG: Push failed with error code %ERRORLEVEL%
-                            echo DEBUG: This might be due to authentication or network issues
-                        ) else (
-                            echo DEBUG: Push completed successfully
-                        )
-                        echo DEBUG: Push operation finished
-                    """
+                    // Configure Git with credentials
+                    withCredentials([usernamePassword(credentialsId: 'github-credentials', usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD')]) {
+                        bat """
+                            echo DEBUG: Configuring Git with credentials
+                            git config user.email "${GIT_EMAIL}"
+                            git config user.name "${GIT_USER}"
+                            echo DEBUG: Git config completed
+                        """
+                        
+                        // Check current branch and status
+                        bat """
+                            echo DEBUG: Current branch:
+                            git branch
+                            echo DEBUG: Current status:
+                            git status
+                            echo DEBUG: Getting current branch name:
+                            git rev-parse --abbrev-ref HEAD
+                        """
+                        
+                        // Ensure we're on main branch (not detached HEAD)
+                        bat """
+                            echo DEBUG: Checking out main branch to avoid detached HEAD
+                            git checkout main
+                            echo DEBUG: Current branch after checkout:
+                            git branch
+                        """
+                        
+                        // Copy generated script to a permanent location in the repository
+                        bat """
+                            echo DEBUG: Copying script to generated_scripts folder
+                            if not exist "generated_scripts" mkdir "generated_scripts"
+                            copy "${env.GENERATED_SCRIPT}" "generated_scripts\\"
+                            echo DEBUG: Script copy completed
+                        """
+                        
+                        // Add and commit the script
+                        def commitMessage = params.GIT_COMMIT_MESSAGE ?: "Generated script: ${params.SCENARIO_NAME} - ${TIMESTAMP} - ${BUILD_INFO}"
+                        bat """
+                            echo DEBUG: Adding files to Git
+                            git add generated_scripts\\*.py
+                            echo DEBUG: Files added, checking status
+                            git status
+                            echo DEBUG: Attempting commit
+                            git diff --cached --quiet && echo "No changes to commit - script is identical" || git commit -m "${commitMessage}"
+                            echo DEBUG: Commit completed
+                        """
+                        
+                        // Push to main branch with credentials
+                        bat """
+                            echo DEBUG: Pushing to main branch with credentials
+                            echo DEBUG: Checking Git remote configuration
+                            git remote -v
+                            echo DEBUG: Attempting push with authenticated user
+                            git push https://%GIT_USERNAME%:%GIT_PASSWORD%@github.com/EdgardoZar/LOCUST_AIAgent.git main
+                            if %ERRORLEVEL% NEQ 0 (
+                                echo DEBUG: Push failed with error code %ERRORLEVEL%
+                                echo DEBUG: This might be due to authentication or network issues
+                            ) else (
+                                echo DEBUG: Push completed successfully
+                            )
+                            echo DEBUG: Push operation finished
+                        """
+                    }
                     
                     echo "Script committed to main branch successfully"
                     echo "Commit message: ${commitMessage}"
