@@ -221,7 +221,7 @@ pipeline {
                     echo "Using script: ${SCRIPTS_DIR}\\${env.SELECTED_SCRIPT}"
                     
                     // Write the Python script to a file
-                    def executeTestScript = '''
+                    def executeTestScript = """
 import sys
 import os
 
@@ -286,7 +286,7 @@ with open(r"${WORKSPACE_DIR}\\test_results.json", "w") as f:
     json.dump(workflow_result, f, indent=2)
 
 print(f"Test completed: Success={result.success}")
-'''
+"""
                     writeFile file: "${WORKSPACE_DIR}\\execute_test.py", text: executeTestScript
                     
                     bat """
@@ -302,10 +302,10 @@ print(f"Test completed: Success={result.success}")
                     def resultsText = readFile file: "${WORKSPACE_DIR}\\test_results.json"
                     
                     // Parse results using Python to avoid serialization issues
-                    def processResultsScript = '''
+                    def processResultsScript = """
 import sys
 import json
-sys.path.insert(0, ".")
+import os
 
 try:
     # Load test results
@@ -372,7 +372,7 @@ except Exception as e:
     with open(r"${WORKSPACE_DIR}\\test_metadata.json", "w") as f:
         json.dump(metadata, f, indent=2)
     sys.exit(1)
-'''
+"""
                     writeFile file: "${WORKSPACE_DIR}\\process_results.py", text: processResultsScript
                     
                     // Parse results using Python to avoid serialization issues
@@ -419,11 +419,24 @@ except Exception as e:
                     
                     withCredentials([string(credentialsId: 'openai-api-key', variable: 'OPENAI_API_KEY')]) {
                         // Write the Python script to a file
-                        def llmAnalysisScript = '''
+                        def llmAnalysisScript = """
 import sys
-sys.path.insert(0, ".")
-from Locust_AI_Agent.analysis.llm_analyzer import LLMAnalyzer
+import os
 import json
+
+# Add the workspace to Python path
+workspace = r"${WORKSPACE}"
+sys.path.insert(0, workspace)
+sys.path.insert(0, os.path.join(workspace, "analysis"))
+
+print(f"DEBUG: LLM Analysis Python path: {sys.path}")
+
+try:
+    from analysis.llm_analyzer import LLMAnalyzer
+    print("DEBUG: Successfully imported LLMAnalyzer")
+except ImportError as e:
+    print(f"DEBUG: LLM Import error: {e}")
+    sys.exit(1)
 
 # Load test results
 with open(r"${WORKSPACE_DIR}\\test_results.json", "r") as f:
@@ -444,7 +457,7 @@ with open(r"${WORKSPACE_DIR}\\test_results_with_llm.json", "w") as f:
     json.dump(results, f, indent=2)
 
 print("LLM analysis completed")
-'''
+"""
                         writeFile file: "${WORKSPACE_DIR}\\llm_analysis.py", text: llmAnalysisScript
                         
                         bat """
