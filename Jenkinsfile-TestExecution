@@ -530,7 +530,7 @@ print("LLM analysis completed")
                         def commitMessage = "Feat: Add test reports for build #${env.BUILD_NUMBER}"
                         bat """
                             echo DEBUG: Adding reports to Git...
-                            git add "${REPORTS_DIR}\\*.*"
+                            git add "${REPORTS_DIR}"
                             
                             echo DEBUG: Committing reports...
                             git diff --cached --quiet && echo "No new reports to commit" || git commit -m "${commitMessage}"

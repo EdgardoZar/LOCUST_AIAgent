@@ -374,8 +374,12 @@ class LocustTestAgent:
         )
         
         try:
-            # Ensure the output directory for reports exists
-            os.makedirs(config.output_dir, exist_ok=True)
+            # Create a unique directory for this test run
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            safe_name = ''.join(c if c.isalnum() or c in ('-', '_') else '_' for c in config.scenario_name)
+            run_output_dir_name = f"{safe_name}_{timestamp}"
+            run_output_dir = os.path.join(config.output_dir, run_output_dir_name)
+            os.makedirs(run_output_dir, exist_ok=True)
 
             # Build command
             cmd = [
@@ -389,20 +393,15 @@ class LocustTestAgent:
             ]
             
             # Add report options
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            safe_name = ''.join(c if c.isalnum() or c in ('-', '_') else '_' for c in config.scenario_name)
-            
             if config.generate_html:
-                html_filename = f"{safe_name}_{timestamp}.html"
-                html_path = os.path.join(config.output_dir, html_filename)
+                html_path = os.path.join(run_output_dir, "report.html")
                 cmd.extend(["--html", html_path])
                 result.html_report_path = html_path
             
             if config.generate_csv:
-                csv_prefix = f"{safe_name}_{timestamp}"
-                csv_path = os.path.join(config.output_dir, csv_prefix)
-                cmd.extend(["--csv", csv_path])
-                result.csv_report_path = f"{csv_path}_stats.csv"
+                csv_prefix = os.path.join(run_output_dir, "report")
+                cmd.extend(["--csv", csv_prefix])
+                result.csv_report_path = f"{csv_prefix}_stats.csv"
             
             # Execute command
             command_result = self.execute_command(cmd)
