@@ -628,8 +628,15 @@ print("LLM analysis completed")
                     // Check if HTML report exists in the path from test results
                     if (htmlReportPath && fileExists(htmlReportPath)) {
                         htmlReportExists = true
-                        reportDir = new File(htmlReportPath).getParent()
+                        // Extract directory path using string manipulation instead of File constructor
+                        def lastSlash = htmlReportPath.lastIndexOf('\\')
+                        if (lastSlash > 0) {
+                            reportDir = htmlReportPath.substring(0, lastSlash)
+                        } else {
+                            reportDir = "."
+                        }
                         echo "DEBUG: Found HTML report at: ${htmlReportPath}"
+                        echo "DEBUG: Report directory: ${reportDir}"
                     }
                     // Check generated_reports directory
                     else if (fileExists("generated_reports\\*.html")) {
@@ -648,9 +655,14 @@ print("LLM analysis completed")
                         def htmlFiles = bat(script: "dir /s /b *.html", returnStdout: true).trim()
                         if (htmlFiles && !htmlFiles.contains("File Not Found")) {
                             echo "DEBUG: Found HTML files: ${htmlFiles}"
-                            // Use the first HTML file found
+                            // Use the first HTML file found and extract directory
                             def firstHtmlFile = htmlFiles.split('\n')[0]
-                            reportDir = new File(firstHtmlFile).getParent()
+                            def lastSlash = firstHtmlFile.lastIndexOf('\\')
+                            if (lastSlash > 0) {
+                                reportDir = firstHtmlFile.substring(0, lastSlash)
+                            } else {
+                                reportDir = "."
+                            }
                             htmlReportExists = true
                             echo "DEBUG: Using HTML report from: ${reportDir}"
                         }
