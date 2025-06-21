@@ -3,7 +3,7 @@ pipeline {
     
     parameters {
         // Branch selection
-        choice(name: 'GIT_BRANCH', choices: ['main', 'dev'], defaultValue: 'main', description: 'Git branch to use for this build')
+        choice(name: 'GIT_BRANCH', choices: ['main', 'dev'], default: 'main', description: 'Git branch to use for this build')
         
         // Test execution parameters will be selected during the build
         string(name: 'TARGET_HOST', defaultValue: 'https://rickandmortyapi.com', description: 'Target host URL for testing')
