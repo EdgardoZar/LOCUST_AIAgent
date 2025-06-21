@@ -611,21 +611,68 @@ print("LLM analysis completed")
                 script {
                     echo "Publishing HTML report..."
                     
-                    // Check if HTML report exists
-                    def htmlReportExists = fileExists "generated_reports\\*.html"
+                    // First, check if we have test results to get the HTML report path
+                    def htmlReportPath = ""
+                    if (fileExists("${WORKSPACE_DIR}/test_results.json")) {
+                        def resultsText = readFile file: "${WORKSPACE_DIR}/test_results.json"
+                        def results = new groovy.json.JsonSlurper().parseText(resultsText)
+                        htmlReportPath = results.html_report_path ?: ""
+                        echo "DEBUG: HTML report path from test results: ${htmlReportPath}"
+                    }
+                    
+                    // Check multiple possible locations for HTML report
+                    def htmlReportExists = false
+                    def reportDir = ""
+                    
+                    // Check if HTML report exists in the path from test results
+                    if (htmlReportPath && fileExists(htmlReportPath)) {
+                        htmlReportExists = true
+                        reportDir = new File(htmlReportPath).getParent()
+                        echo "DEBUG: Found HTML report at: ${htmlReportPath}"
+                    }
+                    // Check generated_reports directory
+                    else if (fileExists("generated_reports\\*.html")) {
+                        htmlReportExists = true
+                        reportDir = "generated_reports"
+                        echo "DEBUG: Found HTML report in generated_reports directory"
+                    }
+                    // Check test_workspace directory
+                    else if (fileExists("${WORKSPACE_DIR}\\*.html")) {
+                        htmlReportExists = true
+                        reportDir = "${WORKSPACE_DIR}"
+                        echo "DEBUG: Found HTML report in test_workspace directory"
+                    }
+                    // Check if any HTML files exist anywhere
+                    else {
+                        def htmlFiles = bat(script: "dir /s /b *.html", returnStdout: true).trim()
+                        if (htmlFiles && !htmlFiles.contains("File Not Found")) {
+                            echo "DEBUG: Found HTML files: ${htmlFiles}"
+                            // Use the first HTML file found
+                            def firstHtmlFile = htmlFiles.split('\n')[0]
+                            reportDir = new File(firstHtmlFile).getParent()
+                            htmlReportExists = true
+                            echo "DEBUG: Using HTML report from: ${reportDir}"
+                        }
+                    }
+                    
                     if (htmlReportExists) {
                         publishHTML([
                             allowMissing: false,
                             alwaysLinkToLastBuild: true,
                             keepAll: true,
-                            reportDir: 'generated_reports',
+                            reportDir: reportDir,
                             reportFiles: '*.html',
                             reportName: 'Locust Test Report',
                             reportTitles: 'Performance Test Results'
                         ])
-                        echo "HTML report published successfully"
+                        echo "HTML report published successfully from: ${reportDir}"
                     } else {
                         echo "No HTML report found to publish"
+                        echo "DEBUG: Checked locations:"
+                        echo "  - ${htmlReportPath}"
+                        echo "  - generated_reports\\*.html"
+                        echo "  - ${WORKSPACE_DIR}\\*.html"
+                        echo "  - Any *.html files in workspace"
                     }
                 }
             }
