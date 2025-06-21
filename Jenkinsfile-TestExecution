@@ -2,6 +2,9 @@ pipeline {
     agent any
     
     parameters {
+        // Branch selection
+        choice(name: 'GIT_BRANCH', choices: ['main', 'dev'], defaultValue: 'main', description: 'Git branch to use for this build')
+        
         // Test execution parameters will be selected during the build
         string(name: 'TARGET_HOST', defaultValue: 'https://rickandmortyapi.com', description: 'Target host URL for testing')
         string(name: 'API_TOKEN', defaultValue: '', description: 'API token for authentication (optional)')
@@ -63,7 +66,7 @@ pipeline {
         stage('Checkout') {
             steps {
                 checkout([$class: 'GitSCM', 
-                    branches: [[name: '*/main']], 
+                    branches: [[name: "*/${params.GIT_BRANCH}"]], 
                     doGenerateSubmoduleConfigurations: false, 
                     extensions: [], 
                     submoduleCfg: [], 
@@ -77,7 +80,8 @@ pipeline {
                     echo "Build Number: ${env.BUILD_NUMBER}"
                     echo "Job Name: ${env.JOB_NAME}"
                     echo "Workspace: ${WORKSPACE}"
-                    echo "Branch: ${env.BRANCH_NAME}"
+                    echo "Selected Branch: ${params.GIT_BRANCH}"
+                    echo "Current Branch: ${env.BRANCH_NAME}"
                     echo "Test Run ID: ${TEST_RUN_ID}"
                     echo "Environment: ${TEST_ENVIRONMENT}"
                     echo "Target Host: ${params.TARGET_HOST}"
@@ -519,11 +523,11 @@ print("LLM analysis completed")
                             git config user.email "${GIT_EMAIL}"
                             git config user.name "${GIT_USER}"
                             
-                            echo DEBUG: Ensuring we're on main branch...
-                            git checkout main
+                            echo DEBUG: Ensuring we're on ${params.GIT_BRANCH} branch...
+                            git checkout ${params.GIT_BRANCH}
                             
                             echo DEBUG: Pulling latest changes...
-                            git pull https://%GIT_USERNAME%:%GIT_PASSWORD%@github.com/EdgardoZar/LOCUST_AIAgent.git main
+                            git pull https://%GIT_USERNAME%:%GIT_PASSWORD%@github.com/EdgardoZar/LOCUST_AIAgent.git ${params.GIT_BRANCH}
                         """
                         
                         def commitMessage = "Feat: Add test reports for build #${env.BUILD_NUMBER}"
@@ -535,10 +539,10 @@ print("LLM analysis completed")
                             git diff --cached --quiet && echo "No new reports to commit" || git commit -m "${commitMessage}"
                             
                             echo DEBUG: Pushing reports to Git...
-                            git push https://%GIT_USERNAME%:%GIT_PASSWORD%@github.com/EdgardoZar/LOCUST_AIAgent.git main || echo "Push failed - reports may already exist"
+                            git push https://%GIT_USERNAME%:%GIT_PASSWORD%@github.com/EdgardoZar/LOCUST_AIAgent.git ${params.GIT_BRANCH} || echo "Push failed - reports may already exist"
                         """
                         
-                        echo "Reports committed to main branch successfully."
+                        echo "Reports committed to ${params.GIT_BRANCH} branch successfully."
                     }
                 }
             }
@@ -687,6 +691,7 @@ print("LLM analysis completed")
                 echo "Job Name: ${env.JOB_NAME}"
                 echo "Result: ${currentBuild.result}"
                 echo "Build URL: ${env.BUILD_URL}"
+                echo "Git Branch: ${params.GIT_BRANCH}"
                 echo "Test Run ID: ${TEST_RUN_ID}"
                 echo "Script Used: ${env.SELECTED_SCRIPT}"
                 echo "Environment: ${TEST_ENVIRONMENT}"
