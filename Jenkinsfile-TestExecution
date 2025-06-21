@@ -63,7 +63,7 @@ pipeline {
         stage('Checkout') {
             steps {
                 checkout([$class: 'GitSCM', 
-                    branches: [[name: '*/main']], 
+                    branches: [[name: '*/dev']], 
                     doGenerateSubmoduleConfigurations: false, 
                     extensions: [], 
                     submoduleCfg: [], 
@@ -77,7 +77,8 @@ pipeline {
                     echo "Build Number: ${env.BUILD_NUMBER}"
                     echo "Job Name: ${env.JOB_NAME}"
                     echo "Workspace: ${WORKSPACE}"
-                    echo "Branch: ${env.BRANCH_NAME}"
+                    echo "Branch: dev"
+                    echo "Current Branch: ${env.BRANCH_NAME}"
                     echo "Test Run ID: ${TEST_RUN_ID}"
                     echo "Environment: ${TEST_ENVIRONMENT}"
                     echo "Target Host: ${params.TARGET_HOST}"
@@ -519,11 +520,11 @@ print("LLM analysis completed")
                             git config user.email "${GIT_EMAIL}"
                             git config user.name "${GIT_USER}"
                             
-                            echo DEBUG: Ensuring we're on main branch...
-                            git checkout main
+                            echo DEBUG: Ensuring we're on dev branch...
+                            git checkout dev
                             
                             echo DEBUG: Pulling latest changes...
-                            git pull https://%GIT_USERNAME%:%GIT_PASSWORD%@github.com/EdgardoZar/LOCUST_AIAgent.git main
+                            git pull https://%GIT_USERNAME%:%GIT_PASSWORD%@github.com/EdgardoZar/LOCUST_AIAgent.git dev
                         """
                         
                         def commitMessage = "Feat: Add test reports for build #${env.BUILD_NUMBER}"
@@ -535,10 +536,10 @@ print("LLM analysis completed")
                             git diff --cached --quiet && echo "No new reports to commit" || git commit -m "${commitMessage}"
                             
                             echo DEBUG: Pushing reports to Git...
-                            git push https://%GIT_USERNAME%:%GIT_PASSWORD%@github.com/EdgardoZar/LOCUST_AIAgent.git main || echo "Push failed - reports may already exist"
+                            git push https://%GIT_USERNAME%:%GIT_PASSWORD%@github.com/EdgardoZar/LOCUST_AIAgent.git dev || echo "Push failed - reports may already exist"
                         """
                         
-                        echo "Reports committed to main branch successfully."
+                        echo "Reports committed to dev branch successfully."
                     }
                 }
             }
@@ -611,21 +612,80 @@ print("LLM analysis completed")
                 script {
                     echo "Publishing HTML report..."
                     
-                    // Check if HTML report exists
-                    def htmlReportExists = fileExists "generated_reports\\*.html"
+                    // First, check if we have test results to get the HTML report path
+                    def htmlReportPath = ""
+                    if (fileExists("${WORKSPACE_DIR}/test_results.json")) {
+                        def resultsText = readFile file: "${WORKSPACE_DIR}/test_results.json"
+                        def results = new groovy.json.JsonSlurper().parseText(resultsText)
+                        htmlReportPath = results.html_report_path ?: ""
+                        echo "DEBUG: HTML report path from test results: ${htmlReportPath}"
+                    }
+                    
+                    // Check multiple possible locations for HTML report
+                    def htmlReportExists = false
+                    def reportDir = ""
+                    
+                    // Check if HTML report exists in the path from test results
+                    if (htmlReportPath && fileExists(htmlReportPath)) {
+                        htmlReportExists = true
+                        // Extract directory path using string manipulation instead of File constructor
+                        def lastSlash = htmlReportPath.lastIndexOf('\\')
+                        if (lastSlash > 0) {
+                            reportDir = htmlReportPath.substring(0, lastSlash)
+                        } else {
+                            reportDir = "."
+                        }
+                        echo "DEBUG: Found HTML report at: ${htmlReportPath}"
+                        echo "DEBUG: Report directory: ${reportDir}"
+                    }
+                    // Check generated_reports directory
+                    else if (fileExists("generated_reports\\*.html")) {
+                        htmlReportExists = true
+                        reportDir = "generated_reports"
+                        echo "DEBUG: Found HTML report in generated_reports directory"
+                    }
+                    // Check test_workspace directory
+                    else if (fileExists("${WORKSPACE_DIR}\\*.html")) {
+                        htmlReportExists = true
+                        reportDir = "${WORKSPACE_DIR}"
+                        echo "DEBUG: Found HTML report in test_workspace directory"
+                    }
+                    // Check if any HTML files exist anywhere
+                    else {
+                        def htmlFiles = bat(script: "dir /s /b *.html", returnStdout: true).trim()
+                        if (htmlFiles && !htmlFiles.contains("File Not Found")) {
+                            echo "DEBUG: Found HTML files: ${htmlFiles}"
+                            // Use the first HTML file found and extract directory
+                            def firstHtmlFile = htmlFiles.split('\n')[0]
+                            def lastSlash = firstHtmlFile.lastIndexOf('\\')
+                            if (lastSlash > 0) {
+                                reportDir = firstHtmlFile.substring(0, lastSlash)
+                            } else {
+                                reportDir = "."
+                            }
+                            htmlReportExists = true
+                            echo "DEBUG: Using HTML report from: ${reportDir}"
+                        }
+                    }
+                    
                     if (htmlReportExists) {
                         publishHTML([
                             allowMissing: false,
                             alwaysLinkToLastBuild: true,
                             keepAll: true,
-                            reportDir: 'generated_reports',
+                            reportDir: reportDir,
                             reportFiles: '*.html',
                             reportName: 'Locust Test Report',
                             reportTitles: 'Performance Test Results'
                         ])
-                        echo "HTML report published successfully"
+                        echo "HTML report published successfully from: ${reportDir}"
                     } else {
                         echo "No HTML report found to publish"
+                        echo "DEBUG: Checked locations:"
+                        echo "  - ${htmlReportPath}"
+                        echo "  - generated_reports\\*.html"
+                        echo "  - ${WORKSPACE_DIR}\\*.html"
+                        echo "  - Any *.html files in workspace"
                     }
                 }
             }
@@ -640,6 +700,7 @@ print("LLM analysis completed")
                 echo "Job Name: ${env.JOB_NAME}"
                 echo "Result: ${currentBuild.result}"
                 echo "Build URL: ${env.BUILD_URL}"
+                echo "Git Branch: dev"
                 echo "Test Run ID: ${TEST_RUN_ID}"
                 echo "Script Used: ${env.SELECTED_SCRIPT}"
                 echo "Environment: ${TEST_ENVIRONMENT}"
