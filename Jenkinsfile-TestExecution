@@ -519,11 +519,11 @@ print("LLM analysis completed")
                             git config user.email "${GIT_EMAIL}"
                             git config user.name "${GIT_USER}"
                             
+                            echo DEBUG: Ensuring we're on main branch...
+                            git checkout main
+                            
                             echo DEBUG: Pulling latest changes...
                             git pull https://%GIT_USERNAME%:%GIT_PASSWORD%@github.com/EdgardoZar/LOCUST_AIAgent.git main
-                            
-                            echo DEBUG: Creating or switching to reports branch...
-                            git checkout -b reports-${env.BUILD_NUMBER} 2>nul || git checkout reports-${env.BUILD_NUMBER}
                         """
                         
                         def commitMessage = "Feat: Add test reports for build #${env.BUILD_NUMBER}"
@@ -535,11 +535,10 @@ print("LLM analysis completed")
                             git diff --cached --quiet && echo "No new reports to commit" || git commit -m "${commitMessage}"
                             
                             echo DEBUG: Pushing reports to Git...
-                            git push https://%GIT_USERNAME%:%GIT_PASSWORD%@github.com/EdgardoZar/LOCUST_AIAgent.git reports-${env.BUILD_NUMBER}
+                            git push https://%GIT_USERNAME%:%GIT_PASSWORD%@github.com/EdgardoZar/LOCUST_AIAgent.git main || echo "Push failed - reports may already exist"
                         """
                         
-                        echo "Reports committed to reports-${env.BUILD_NUMBER} branch successfully."
-                        echo "You can create a pull request to merge these reports into main if needed."
+                        echo "Reports committed to main branch successfully."
                     }
                 }
             }
