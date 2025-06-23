@@ -5,7 +5,7 @@ import logging
 import random
 import re
 
-class RickAndMortyApiTestUser(HttpUser):
+class RickAndMortyApiTest0623User(HttpUser):
     wait_time = between(1.0, 3.0)
     
     def on_start(self):
