@@ -324,12 +324,36 @@ class EnhancedScriptGenerator:
             if not expression.startswith('$'):
                 return None
                 
-            parts = expression[2:].split('.')
+            # Split the path more intelligently to handle [*] syntax
+            parts = []
+            current_part = ""
+            i = 2  # Skip the '$.' prefix
+            
+            while i < len(expression):
+                char = expression[i]
+                if char == '.':
+                    if current_part:
+                        parts.append(current_part)
+                        current_part = ""
+                elif char == '[' and i + 2 < len(expression) and expression[i:i+3] == '[*]':
+                    if current_part:
+                        parts.append(current_part)
+                    parts.append('[*]')
+                    current_part = ""
+                    i += 2  # Skip the '[*]'
+                else:
+                    current_part += char
+                i += 1
+            
+            if current_part:
+                parts.append(current_part)
+            
             current = data
             i = 0
             
             # Debug output - using print for immediate visibility
             print(f'DEBUG: JSONPath extraction: {expression}')
+            print(f'DEBUG: Parsed parts: {parts}')
             print(f'DEBUG: Input data type: {type(data)}')
             if isinstance(data, dict):
                 print(f'DEBUG: Available keys: {list(data.keys())}')
@@ -341,35 +365,24 @@ class EnhancedScriptGenerator:
                 print(f'DEBUG: Processing part {i+1}: {part}, current type: {type(current)}')
                 
                 if isinstance(current, dict):
-                    # Handle array wildcard in key, e.g., results[*]
-                    if part.endswith('[*]'):
-                        key = part[:-3]
-                        print(f'DEBUG: Array wildcard extraction for key: {key}')
-                        if key in current:
-                            current = current[key]
-                            print(f'DEBUG: Found array key {key}, array length: {len(current)}')
-                            if isinstance(current, list) and current:
-                                print(f'DEBUG: First item keys: {list(current[0].keys())}')
-                            # If there's another part, extract that property from each item
-                            if i + 1 < len(parts):
-                                next_part = parts[i + 1]
+                    if part == '[*]':
+                        print(f'DEBUG: Wildcard found, returning array with {len(current)} items')
+                        return current
+                    elif part in current:
+                        current = current[part]
+                        print(f'DEBUG: Found key {part}, new current type: {type(current)}')
+                        
+                        # If this is an array and the next part is a property, extract that property
+                        if isinstance(current, list) and i + 1 < len(parts):
+                            next_part = parts[i + 1]
+                            if next_part != '[*]':  # Not another wildcard
                                 print(f'DEBUG: Extracting property {next_part} from each array item')
                                 result = [item.get(next_part) for item in current if isinstance(item, dict) and next_part in item]
                                 print(f'DEBUG: Extracted {next_part} from {len(current)} items, got {len(result)} values')
                                 return result
-                            else:
-                                print(f'DEBUG: Returning entire array with {len(current)} items')
-                                return current
-                        else:
-                            print(f'DEBUG: Key {key} not found in dict. Available keys: {list(current.keys())}')
-                            return None
                     else:
-                        if part in current:
-                            current = current[part]
-                            print(f'DEBUG: Found key {part}, new current type: {type(current)}')
-                        else:
-                            print(f'DEBUG: Key {part} not found in dict. Available keys: {list(current.keys())}')
-                            return None
+                        print(f'DEBUG: Key {part} not found in dict. Available keys: {list(current.keys())}')
+                        return None
                 elif isinstance(current, list):
                     if part == '*':
                         # Wildcard - return the entire array
