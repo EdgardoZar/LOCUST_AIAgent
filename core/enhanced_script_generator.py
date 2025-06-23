@@ -307,8 +307,8 @@ class EnhancedScriptGenerator:
         # Report assertion failures
         if assertion_failures:
             failure_message = '; '.join(assertion_failures)
-            response.failure(f'Assertions failed: {{failure_message}}')
-            self.logger.error(f'Assertions failed: {{failure_message}}')
+            response.failure(f'Assertions failed: {failure_message}')
+            self.logger.error(f'Assertions failed: {failure_message}')
         else:
             self.logger.info('All assertions passed')
 """
