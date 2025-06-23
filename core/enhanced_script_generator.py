@@ -328,7 +328,6 @@ class EnhancedScriptGenerator:
             parts = []
             current_part = ""
             i = 2  # Skip the '$.' prefix
-            
             while i < len(expression):
                 char = expression[i]
                 if char == '.':
@@ -344,14 +343,10 @@ class EnhancedScriptGenerator:
                 else:
                     current_part += char
                 i += 1
-            
             if current_part:
                 parts.append(current_part)
-            
             current = data
             i = 0
-            
-            # Debug output - using print for immediate visibility
             print(f'DEBUG: JSONPath extraction: {expression}')
             print(f'DEBUG: Parsed parts: {parts}')
             print(f'DEBUG: Input data type: {type(data)}')
@@ -359,35 +354,28 @@ class EnhancedScriptGenerator:
                 print(f'DEBUG: Available keys: {list(data.keys())}')
             elif isinstance(data, list):
                 print(f'DEBUG: Array length: {len(data)}')
-            
             while i < len(parts):
                 part = parts[i]
                 print(f'DEBUG: Processing part {i+1}: {part}, current type: {type(current)}')
-                
                 if isinstance(current, dict):
-                    if part == '[*]':
-                        print(f'DEBUG: Wildcard found, returning array with {len(current)} items')
-                        return current
-                    elif part in current:
+                    if part in current:
                         current = current[part]
                         print(f'DEBUG: Found key {part}, new current type: {type(current)}')
-                        
-                        # If this is an array and the next part is a property, extract that property
-                        if isinstance(current, list) and i + 1 < len(parts):
-                            next_part = parts[i + 1]
-                            if next_part != '[*]':  # Not another wildcard
-                                print(f'DEBUG: Extracting property {next_part} from each array item')
-                                result = [item.get(next_part) for item in current if isinstance(item, dict) and next_part in item]
-                                print(f'DEBUG: Extracted {next_part} from {len(current)} items, got {len(result)} values')
-                                return result
                     else:
                         print(f'DEBUG: Key {part} not found in dict. Available keys: {list(current.keys())}')
                         return None
                 elif isinstance(current, list):
-                    if part == '*':
-                        # Wildcard - return the entire array
-                        print(f'DEBUG: Wildcard found, returning array with {len(current)} items')
-                        return current
+                    if part == '[*]':
+                        # If this is the last part, just return the array
+                        if i + 1 == len(parts):
+                            print(f'DEBUG: Wildcard found, returning array with {len(current)} items')
+                            return current
+                        # Otherwise, extract the next property from each item and continue
+                        next_part = parts[i + 1]
+                        print(f'DEBUG: Extracting property {next_part} from each array item')
+                        current = [item.get(next_part) for item in current if isinstance(item, dict) and next_part in item]
+                        print(f'DEBUG: Extracted {next_part} from {len(current)} items')
+                        i += 1  # Skip the next part, since we've just processed it
                     elif part.isdigit():
                         index = int(part)
                         if 0 <= index < len(current):
@@ -403,7 +391,6 @@ class EnhancedScriptGenerator:
                     print(f'DEBUG: Cannot process part {part} on type {type(current)}')
                     return None
                 i += 1
-                    
             print(f'DEBUG: Final result: {current}')
             return current
         except Exception as e:
