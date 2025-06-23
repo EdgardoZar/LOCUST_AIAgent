@@ -18,6 +18,7 @@ pipeline {
         
         // Advanced options
         booleanParam(name: 'USE_LLM_ANALYSIS', defaultValue: false, description: 'Enable LLM-powered analysis')
+        choice(name: 'LLM_MODEL', choices: ['gpt-3.5-turbo', 'gpt-4', 'gpt-4-turbo-preview'], description: 'AI model for analysis')
         booleanParam(name: 'GENERATE_HTML_REPORT', defaultValue: true, description: 'Generate HTML test report')
         booleanParam(name: 'GENERATE_CSV_REPORT', defaultValue: true, description: 'Generate CSV test report')
         string(name: 'LOG_LEVEL', defaultValue: 'INFO', description: 'Logging level (DEBUG, INFO, WARNING, ERROR)')
@@ -413,107 +414,9 @@ except Exception as e:
             }
         }
         
-        stage('LLM Analysis') {
-            when {
-                expression { params.USE_LLM_ANALYSIS }
-            }
-            steps {
-                script {
-                    echo "Running LLM analysis..."
-                    echo "Test Run ID: ${TEST_RUN_ID}"
-                    
-                    withCredentials([string(credentialsId: 'openai-api-key', variable: 'OPENAI_API_KEY')]) {
-                        // Write the Python script to a file
-                        def llmAnalysisScript = """
-import sys
-import os
-import json
-
-# Add the workspace to Python path
-workspace = r"${WORKSPACE}"
-sys.path.insert(0, workspace)
-sys.path.insert(0, os.path.join(workspace, "analysis"))
-
-print(f"DEBUG: LLM Analysis Python path: {sys.path}")
-
-try:
-    from analysis.llm_analyzer import LLMAnalyzer
-    print("DEBUG: Successfully imported LLMAnalyzer")
-except ImportError as e:
-    print(f"DEBUG: LLM Import error: {e}")
-    sys.exit(1)
-
-# Load test results
-with open(r"${WORKSPACE_DIR}\\test_results.json", "r") as f:
-    results = json.load(f)
-
-# Run LLM analysis
-llm_analyzer = LLMAnalyzer(api_key="${OPENAI_API_KEY}")
-llm_analysis = llm_analyzer.analyze_test_results(
-    results["test_result"],
-    results.get("html_report_path")
-)
-
-# Add LLM analysis to results
-results["llm_analysis"] = llm_analysis
-
-# Save updated results
-with open(r"${WORKSPACE_DIR}\\test_results_with_llm.json", "w") as f:
-    json.dump(results, f, indent=2)
-
-print("LLM analysis completed")
-"""
-                        writeFile file: "${WORKSPACE_DIR}\\llm_analysis.py", text: llmAnalysisScript
-                        
-                        bat """
-                            call venv\\Scripts\\activate.bat
-                            cd ${WORKSPACE}
-                            set PYTHONPATH=%PYTHONPATH%;${WORKSPACE}
-                            set OPENAI_API_KEY=${OPENAI_API_KEY}
-                            python ${WORKSPACE_DIR}\\llm_analysis.py
-                        """
-                    }
-                    
-                    echo "LLM analysis completed successfully"
-                }
-            }
-        }
-        
-        stage('Archive Results') {
-            steps {
-                script {
-                    echo "Archiving test results..."
-                    echo "Test Run ID: ${TEST_RUN_ID}"
-                    
-                    // Archive HTML report if it exists
-                    archiveArtifacts(
-                        artifacts: 'generated_reports/**/*.html', 
-                        allowEmptyArchive: true, 
-                        fingerprint: true
-                    )
-                    
-                    // Archive CSV report if it exists
-                    archiveArtifacts(
-                        artifacts: 'generated_reports/**/*.csv', 
-                        allowEmptyArchive: true, 
-                        fingerprint: true
-                    )
-
-                    // Archive JSON results
-                    archiveArtifacts(
-                        artifacts: 'test_workspace/test_results.json', 
-                        allowEmptyArchive: true, 
-                        fingerprint: true
-                    )
-                }
-            }
-        }
-        
         stage('Commit Reports to Git') {
             steps {
                 script {
-                    echo "Committing generated reports to Git repository..."
-                    
                     withCredentials([usernamePassword(credentialsId: 'github-credentials', usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD')]) {
                         bat """
                             echo DEBUG: Configuring Git...
@@ -541,6 +444,49 @@ print("LLM analysis completed")
                         
                         echo "Reports committed to dev branch successfully."
                     }
+                }
+            }
+        }
+        
+        stage('LLM Analysis') {
+            when {
+                expression { params.USE_LLM_ANALYSIS == true }
+            }
+            steps {
+                script {
+                    echo "🤖 Starting LLM Analysis using model: ${params.LLM_MODEL}"
+                    
+                    def analysisDir = "${WORKSPACE}\\generated_analysis"
+                    bat "if not exist \"${analysisDir}\" mkdir \"${analysisDir}\""
+                    
+                    withCredentials([string(credentialsId: 'openai-api-key', variable: 'OPENAI_API_KEY')]) {
+                        bat """
+                            call venv\\Scripts\\activate.bat
+                            python analysis/run_llm_analysis.py ^
+                                --reports_dir "${REPORTS_DIR}" ^
+                                --analysis_dir "${analysisDir}" ^
+                                --scenario_name "${env.SCRIPT_NAME}" ^
+                                --test_run_id "${TEST_RUN_ID}" ^
+                                --users "${params.USERS}" ^
+                                --run_time "${params.RUN_TIME}" ^
+                                --model "${params.LLM_MODEL}"
+                        """
+                    }
+                    
+                    archiveArtifacts artifacts: "generated_analysis/*.md", fingerprint: true
+                    echo "✅ LLM Analysis report archived."
+                    
+                    withCredentials([usernamePassword(credentialsId: 'github-credentials', usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD')]) {
+                        def commitMessage = "feat(analysis): Add LLM analysis for ${env.SCRIPT_NAME} - Build #${env.BUILD_NUMBER}"
+                        bat """
+                            git config user.email "${GIT_USERNAME}@users.noreply.github.com"
+                            git config user.name "${GIT_USERNAME}"
+                            git add "${analysisDir}"
+                            git diff --cached --quiet && echo "No new analysis to commit" || git commit -m "${commitMessage}"
+                            git push https://%GIT_USERNAME%:%GIT_PASSWORD%@github.com/EdgardoZar/LOCUST_AIAgent.git dev
+                        """
+                    }
+                    echo "✅ LLM Analysis committed to Git."
                 }
             }
         }
