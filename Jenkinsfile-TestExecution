@@ -545,6 +545,13 @@ except Exception as e:
                     
                     def successRate = (totalRequests > 0) ? (((totalRequests - failedRequests) * 100.0) / totalRequests) : 0.0
                     
+                    // Set environment variables for post section display
+                    env.TEST_SUCCESS = results.workflow_success.toString()
+                    env.TOTAL_REQUESTS = totalRequests.toString()
+                    env.SUCCESS_RATE = String.format('%.2f', successRate)
+                    env.AVG_RESPONSE_TIME = String.format('%.2f', avgResponseTime)
+                    env.REQUESTS_PER_SEC = String.format('%.2f', requestsPerSec)
+                    
                     echo "Test Results Analysis:"
                     echo "  Success: ${results.workflow_success}"
                     echo "  Scenario: ${results.scenario_name}"
