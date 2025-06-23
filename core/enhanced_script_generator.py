@@ -514,12 +514,13 @@ import re
 class {class_name}(HttpUser):
     wait_time = between({min_wait}, {max_wait})
     
+{self._generate_data_source_code()}
+{self._generate_helper_methods()}
+    
     def on_start(self):
         self.variables = {{}}
         self.logger = logging.getLogger(__name__)
         self.load_test_data()
-{self._generate_data_source_code()}
-{self._generate_helper_methods()}
     
     def replace_variables(self, text):
         \"\"\"Replace variables in text with actual values\"\"\"
