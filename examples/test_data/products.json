@@ -1,0 +1,25 @@
+{
+  "products": [
+    {
+      "id": "PROD001",
+      "name": "Laptop Computer",
+      "category": "electronics",
+      "price": 999.99,
+      "description": "High-performance laptop"
+    },
+    {
+      "id": "PROD002",
+      "name": "Wireless Headphones",
+      "category": "electronics",
+      "price": 199.99,
+      "description": "Noise-cancelling headphones"
+    },
+    {
+      "id": "PROD003",
+      "name": "Coffee Maker",
+      "category": "home",
+      "price": 89.99,
+      "description": "Programmable coffee maker"
+    }
+  ]
+}

@@ -14,6 +14,13 @@ import requests
 import csv
 from dataclasses import dataclass, asdict, field
 
+# Import the enhanced script generator
+try:
+    from .enhanced_script_generator import EnhancedScriptGenerator
+    ENHANCED_GENERATOR_AVAILABLE = True
+except ImportError:
+    ENHANCED_GENERATOR_AVAILABLE = False
+
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
@@ -45,6 +52,7 @@ class TestConfig:
     generate_csv: bool = True
     generate_html: bool = True
     log_level: str = "INFO"
+    use_enhanced_generator: bool = True  # New flag for enhanced features
 
     def __post_init__(self):
         if self.assertions is None:
@@ -84,7 +92,7 @@ class LocustTestAgent:
     
     This agent can:
     1. Create test scenarios from JSON configurations
-    2. Generate Locust scripts
+    2. Generate Locust scripts (basic or enhanced)
     3. Execute tests with specified parameters
     4. Save reports in desired locations
     5. Analyze results and provide summaries
@@ -111,6 +119,12 @@ class LocustTestAgent:
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
         )
         self.logger = logging.getLogger(__name__)
+        
+        # Log enhanced generator availability
+        if ENHANCED_GENERATOR_AVAILABLE:
+            self.logger.info("Enhanced script generator is available")
+        else:
+            self.logger.warning("Enhanced script generator not available, using basic generator")
     
     def execute_command(self, cmd: list) -> CommandResult:
         """Executes a shell command and returns the result."""
@@ -183,27 +197,130 @@ class LocustTestAgent:
             Path to generated script
         """
         try:
-            # Use external script generator if provided
-            if self.script_generator:
-                script_content = self.script_generator.generate_script(scenario)
+            # Check if we should use enhanced generator
+            if (config.use_enhanced_generator and 
+                ENHANCED_GENERATOR_AVAILABLE and 
+                self._is_enhanced_scenario(scenario)):
+                
+                self.logger.info("Using enhanced script generator")
+                return self._generate_enhanced_script(scenario, config)
             else:
-                # Fallback to basic script generation
-                script_content = self._generate_basic_script(scenario, config)
+                # Use external script generator if provided
+                if self.script_generator:
+                    script_content = self.script_generator.generate_script(scenario)
+                else:
+                    # Fallback to basic script generation
+                    script_content = self._generate_basic_script(scenario, config)
+                
+                # Create safe filename
+                safe_name = ''.join(c if c.isalnum() or c in ('-', '_') else '_' for c in scenario["name"])
+                script_filename = f"{safe_name}.py"
+                script_path = os.path.join(self.scripts_dir, script_filename)
+                
+                # Write script to file
+                with open(script_path, 'w') as f:
+                    f.write(script_content)
+                
+                self.logger.info(f"Generated basic script: {script_path}")
+                return script_path
+                
+        except Exception as e:
+            self.logger.error(f"Error generating script: {e}")
+            raise
+    
+    def _is_enhanced_scenario(self, scenario: Dict[str, Any]) -> bool:
+        """
+        Check if scenario uses enhanced features.
+        
+        Args:
+            scenario: Scenario configuration
             
-            # Create safe filename
+        Returns:
+            True if scenario uses enhanced features
+        """
+        # Check for enhanced features
+        has_parameters = 'parameters' in scenario and 'data_sources' in scenario.get('parameters', {})
+        has_enhanced_extract = any(
+            step.get('extract') and 
+            any(isinstance(v, dict) and 'type' in v for v in step['extract'].values())
+            for step in scenario.get('steps', [])
+        )
+        has_enhanced_assertions = any(
+            step.get('assertions') and 
+            any(isinstance(a, dict) and 'type' in a for a in step['assertions'])
+            for step in scenario.get('steps', [])
+        )
+        
+        return has_parameters or has_enhanced_extract or has_enhanced_assertions
+    
+    def _generate_enhanced_script(self, scenario: Dict[str, Any], config: TestConfig) -> str:
+        """
+        Generate script using enhanced generator.
+        
+        Args:
+            scenario: Scenario configuration
+            config: Test configuration
+            
+        Returns:
+            Path to generated script
+        """
+        try:
+            # Create safe filename for output
             safe_name = ''.join(c if c.isalnum() or c in ('-', '_') else '_' for c in scenario["name"])
             script_filename = f"{safe_name}.py"
             script_path = os.path.join(self.scripts_dir, script_filename)
             
-            # Write script to file
-            with open(script_path, 'w') as f:
-                f.write(script_content)
+            # Create temporary scenario file in the same directory as the script
+            scenario_file = os.path.join(self.scripts_dir, f"{safe_name}_scenario.json")
             
-            self.logger.info(f"Generated script: {script_path}")
+            # Update file paths in scenario to be relative to the scenario file location
+            updated_scenario = self._update_scenario_paths(scenario, self.scripts_dir)
+            
+            with open(scenario_file, 'w') as f:
+                json.dump(updated_scenario, f, indent=2)
+            
+            # Use enhanced generator
+            generator = EnhancedScriptGenerator(scenario_file, script_path)
+            generator.generate_script()
+            
+            # Clean up temporary scenario file
+            os.remove(scenario_file)
+            
+            self.logger.info(f"Generated enhanced script: {script_path}")
             return script_path
             
         except Exception as e:
-            raise RuntimeError(f"Error generating script: {e}")
+            self.logger.error(f"Error generating enhanced script: {e}")
+            raise
+    
+    def _update_scenario_paths(self, scenario: Dict[str, Any], base_dir: str) -> Dict[str, Any]:
+        """
+        Update file paths in scenario to be relative to the base directory.
+        
+        Args:
+            scenario: Original scenario configuration
+            base_dir: Base directory for path resolution
+            
+        Returns:
+            Updated scenario with corrected paths
+        """
+        import copy
+        updated_scenario = copy.deepcopy(scenario)
+        
+        # Update data source file paths
+        if 'parameters' in updated_scenario and 'data_sources' in updated_scenario['parameters']:
+            for source in updated_scenario['parameters']['data_sources']:
+                if 'file' in source:
+                    # Make path relative to the workspace directory
+                    original_path = source['file']
+                    if not os.path.isabs(original_path):
+                        # If it's already relative, make it relative to workspace
+                        source['file'] = os.path.relpath(
+                            os.path.join(self.workspace_dir, original_path),
+                            base_dir
+                        )
+        
+        return updated_scenario
     
     def _generate_basic_script(self, scenario: Dict[str, Any], config: TestConfig) -> str:
         """Generate a basic Locust script when no external generator is available."""
