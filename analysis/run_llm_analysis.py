@@ -9,33 +9,49 @@ import re
 from llm_analyzer import LLMAnalyzer
 
 def find_latest_reports(reports_dir):
-    """Finds the most recent stats and HTML report files using a regex to find timestamps."""
+    """Finds the most recent stats and HTML report files based on available _stats.csv files."""
     if not os.path.isdir(reports_dir):
         raise FileNotFoundError(f"Reports directory not found: {reports_dir}")
 
-    all_files = os.listdir(reports_dir)
+    # 1. Find all stats files, which are essential for the analysis
+    stats_files = [f for f in os.listdir(reports_dir) if f.endswith('_stats.csv')]
+    if not stats_files:
+        raise FileNotFoundError("No _stats.csv files found in the reports directory.")
+
+    # 2. Extract timestamps from the stats files and find the latest one
+    timestamp_pattern = re.compile(r'(\d{8}_\d{6})')
     
-    # Regex to find the timestamp pattern _YYYYMMDD_HHMMSS
-    timestamp_pattern = re.compile(r'_(\d{8}_\d{6})')
-    
-    timestamps = []
-    for f in all_files:
+    latest_timestamp = ''
+    latest_stats_file = ''
+
+    for f in stats_files:
         match = timestamp_pattern.search(f)
         if match:
-            timestamps.append(match.group(1))
+            timestamp = match.group(1)
+            if timestamp > latest_timestamp:
+                latest_timestamp = timestamp
+                latest_stats_file = f
+    
+    if not latest_stats_file:
+        raise ValueError("Could not determine the latest stats file from available files.")
 
-    if not timestamps:
-        print("Warning: No files with valid timestamps found.")
-        return None, None
+    print(f"Found latest stats file: {latest_stats_file}")
+    stats_file_path = os.path.join(reports_dir, latest_stats_file)
 
-    latest_timestamp = sorted(list(set(timestamps)), reverse=True)[0]
-    print(f"Found latest timestamp: {latest_timestamp}")
+    # 3. Now, find the corresponding HTML file for that same timestamp (it's optional)
+    html_file_path = None
+    # The HTML file will have the timestamp preceded by an underscore and followed by a dot
+    html_file_candidate_name_part = f"_{latest_timestamp}.html"
+    for f in os.listdir(reports_dir):
+        if f.endswith(html_file_candidate_name_part):
+             # To be extra sure, check that the main name part also matches
+             stats_prefix = latest_stats_file.split(f'_{latest_timestamp}_')[0]
+             html_prefix = f.split(f'_{latest_timestamp}.')[0]
+             if stats_prefix == html_prefix:
+                html_file_path = os.path.join(reports_dir, f)
+                break
 
-    # Now find the files that contain this exact timestamp
-    stats_file = next((os.path.join(reports_dir, f) for f in all_files if f"_{latest_timestamp}_" in f and f.endswith('_stats.csv')), None)
-    html_file = next((os.path.join(reports_dir, f) for f in all_files if f"_{latest_timestamp}." in f and f.endswith('.html')), None)
-
-    return stats_file, html_file
+    return stats_file_path, html_file_path
 
 def read_summary_stats(stats_file_path):
     """Reads the aggregated summary row from the _stats.csv file."""
