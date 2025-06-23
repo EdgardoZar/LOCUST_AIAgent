@@ -55,21 +55,32 @@ def find_latest_reports(reports_dir):
 
 def read_summary_stats(stats_file_path):
     """Reads the aggregated summary row from the _stats.csv file."""
-    with open(stats_file_path, mode='r', encoding='utf-8') as infile:
-        reader = csv.reader(infile)
-        # The last row is the aggregated summary
-        for row in reader:
-            pass
-        # This is now the last row
-        summary_row = row
-    
-    # Assuming standard Locust CSV format
-    return {
-        "total_requests": int(summary_row[2]),
-        "failed_requests": int(summary_row[3]),
-        "requests_per_sec": float(summary_row[5]),
-        "avg_response_time": float(summary_row[7]),
-    }
+    try:
+        with open(stats_file_path, mode='r', encoding='utf-8') as infile:
+            reader = csv.reader(infile)
+            all_rows = list(reader)
+
+        if not all_rows:
+            raise ValueError(f"The stats file is empty: {stats_file_path}")
+
+        # The last row should be the aggregated summary
+        summary_row = all_rows[-1]
+
+        # A valid summary row should have at least 8 columns
+        if len(summary_row) < 8:
+            raise ValueError(f"The summary row in {stats_file_path} is malformed or has too few columns. Content: {summary_row}")
+
+        # Assuming standard Locust CSV format
+        return {
+            "total_requests": int(summary_row[2]),
+            "failed_requests": int(summary_row[3]),
+            "requests_per_sec": float(summary_row[5]),
+            "avg_response_time": float(summary_row[7]),
+        }
+    except (ValueError, IndexError) as e:
+        print(f"Error processing stats file {stats_file_path}: {e}")
+        # Re-raise the exception to ensure the pipeline fails clearly
+        raise
 
 def format_as_markdown(analysis_data, scenario_name, test_run_id):
     """Formats the LLM analysis JSON into a Markdown report."""
