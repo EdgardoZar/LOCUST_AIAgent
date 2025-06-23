@@ -95,6 +95,7 @@ def main():
     parser.add_argument("--analysis_dir", required=True, help="Directory to save the analysis markdown file.")
     parser.add_argument("--scenario_name", required=True, help="Name of the test scenario.")
     parser.add_argument("--test_run_id", required=True, help="Unique ID for the test run.")
+    parser.add_argument("--model", default="gpt-3.5-turbo", help="The OpenAI model to use for analysis.")
     args = parser.parse_args()
 
     # API Key is expected to be in the environment variables
@@ -123,7 +124,8 @@ def main():
         }
 
         # Run analysis
-        analyzer = LLMAnalyzer(api_key=api_key)
+        print(f"Using AI model: {args.model}")
+        analyzer = LLMAnalyzer(api_key=api_key, model=args.model)
         analysis_json = analyzer.analyze_test_results(test_results_context, html_report_path)
         
         print("\nLLM Analysis (JSON):\n", json.dumps(analysis_json, indent=2))

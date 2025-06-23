@@ -18,6 +18,7 @@ pipeline {
         
         // Advanced options
         booleanParam(name: 'USE_LLM_ANALYSIS', defaultValue: false, description: 'Enable LLM-powered analysis')
+        choice(name: 'LLM_MODEL', choices: ['gpt-3.5-turbo', 'gpt-4', 'gpt-4-turbo-preview'], description: 'AI model for analysis')
         booleanParam(name: 'GENERATE_HTML_REPORT', defaultValue: true, description: 'Generate HTML test report')
         booleanParam(name: 'GENERATE_CSV_REPORT', defaultValue: true, description: 'Generate CSV test report')
         string(name: 'LOG_LEVEL', defaultValue: 'INFO', description: 'Logging level (DEBUG, INFO, WARNING, ERROR)')
@@ -453,7 +454,7 @@ except Exception as e:
             }
             steps {
                 script {
-                    echo "🤖 Starting LLM Analysis..."
+                    echo "🤖 Starting LLM Analysis using model: ${params.LLM_MODEL}"
                     
                     def analysisDir = "${WORKSPACE}\\generated_analysis"
                     bat "if not exist \"${analysisDir}\" mkdir \"${analysisDir}\""
@@ -466,7 +467,8 @@ except Exception as e:
                                 --reports_dir "${REPORTS_DIR}" ^
                                 --analysis_dir "${analysisDir}" ^
                                 --scenario_name "${env.SCRIPT_NAME}" ^
-                                --test_run_id "${TEST_RUN_ID}"
+                                --test_run_id "${TEST_RUN_ID}" ^
+                                --model "${params.LLM_MODEL}"
                         """
                     }
                     

@@ -175,7 +175,7 @@ Format your response as JSON with the following structure:
                 {"role": "user", "content": prompt}
             ],
             "temperature": 0.3,
-            "max_tokens": 1000
+            "max_tokens": 1500
         }
         
         response = requests.post(self.api_endpoint, headers=headers, json=data)
