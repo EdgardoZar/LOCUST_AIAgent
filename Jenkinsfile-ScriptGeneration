@@ -59,8 +59,20 @@ pipeline {
         
         stage('Checkout') {
             steps {
-                checkout scm
                 script {
+                    // Get branch from SCM configuration to ensure we are not in a detached HEAD state
+                    def branchSpec = scm.branches[0].name
+                    def branchName = branchSpec.substring(branchSpec.lastIndexOf('/') + 1)
+                    
+                    checkout([
+                        $class: 'GitSCM',
+                        branches: [[name: branchName]],
+                        userRemoteConfigs: scm.userRemoteConfigs
+                    ])
+                    
+                    // Set env.BRANCH_NAME explicitly for later stages
+                    env.BRANCH_NAME = branchName
+                    
                     echo "=== Script Generation Pipeline ==="
                     echo "Build Number: ${env.BUILD_NUMBER}"
                     echo "Job Name: ${env.JOB_NAME}"
@@ -78,9 +90,7 @@ pipeline {
                 script {
                     echo "Setting up environment..."
                     echo "Python Version: ${PYTHON_VERSION}"
-                    echo "Scripts Branch: ${GIT_SCRIPTS_BRANCH}"
-                    echo "Git User: ${GIT_USER}"
-                    echo "Git Email: ${GIT_EMAIL}"
+                    echo "Git Branch: ${env.BRANCH_NAME}"
                     
                     // Create directories
                     bat "if not exist \"${WORKSPACE_DIR}\" mkdir \"${WORKSPACE_DIR}\""
@@ -310,6 +320,9 @@ except Exception as e:
             steps {
                 script {
                     def branchName = env.BRANCH_NAME
+                    if (!branchName) {
+                        error "Could not determine branch name. Aborting git commit."
+                    }
                     echo "Committing generated script to Git repository..."
                     echo "Branch: ${branchName}"
                     echo "Script: ${env.GENERATED_SCRIPT}"
@@ -322,8 +335,8 @@ except Exception as e:
                     withCredentials([usernamePassword(credentialsId: 'github-credentials', usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD')]) {
                         bat """
                             echo DEBUG: Configuring Git with credentials
-                            git config user.email "${GIT_EMAIL}"
-                            git config user.name "${GIT_USER}"
+                            git config user.email "${GIT_USERNAME}@users.noreply.github.com"
+                            git config user.name "${GIT_USERNAME}"
                             echo DEBUG: Git config completed
                         """
                         
@@ -339,10 +352,8 @@ except Exception as e:
                         
                         // Ensure we're on the correct branch and pull latest changes
                         bat """
-                            echo DEBUG: Checking out ${branchName} branch to avoid detached HEAD
+                            echo DEBUG: Current branch is now ${branchName}
                             git checkout ${branchName}
-                            echo DEBUG: Current branch after checkout:
-                            git branch
                             echo DEBUG: Pulling latest changes from remote ${branchName}
                             git pull https://%GIT_USERNAME%:%GIT_PASSWORD%@github.com/EdgardoZar/LOCUST_AIAgent.git ${branchName}
                             echo DEBUG: Pull completed
