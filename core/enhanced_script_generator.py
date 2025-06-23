@@ -155,10 +155,12 @@ class EnhancedScriptGenerator:
                 # Store as JSON if it's an array, otherwise as string
                 if isinstance({var_name}_value, list):
                     self.variables['{var_name}'] = json.dumps({var_name}_value)
-                    self.logger.info(f'Extracted array {{var_name}} with {{len({var_name}_value)}} items')
+                    self.logger.info(f'Extracted array {var_name} with {{len({var_name}_value)}} items')
                 else:
                     self.variables['{var_name}'] = str({var_name}_value)
-                    self.logger.info(f'Extracted {{var_name}} = {{self.variables["{var_name}"]}}')
+                    self.logger.info(f'Extracted {var_name} = {{self.variables["{var_name}"]}}')
+            else:
+                self.logger.warning(f'Failed to extract {var_name} using JSONPath: {expression}')
 """
             elif extract_type == 'regex':
                 code += f"""
@@ -173,7 +175,9 @@ class EnhancedScriptGenerator:
 """
                 code += f"""
                 self.variables['{var_name}'] = {var_name}_value
-                self.logger.info(f'Extracted {{var_name}} = {{self.variables["{var_name}"]}}')
+                self.logger.info(f'Extracted {var_name} = {{self.variables["{var_name}"]}}')
+            else:
+                self.logger.warning(f'Failed to extract {var_name} using regex: {expression}')
 """
             elif extract_type == 'boundary':
                 left_boundary = config.get('left_boundary', '')
@@ -190,7 +194,9 @@ class EnhancedScriptGenerator:
 """
                 code += f"""
                 self.variables['{var_name}'] = {var_name}_value
-                self.logger.info(f'Extracted {{var_name}} = {{self.variables["{var_name}"]}}')
+                self.logger.info(f'Extracted {var_name} = {{self.variables["{var_name}"]}}')
+            else:
+                self.logger.warning(f'Failed to extract {var_name} using boundaries: {left_boundary} -> {right_boundary}')
 """
         
         code += """
