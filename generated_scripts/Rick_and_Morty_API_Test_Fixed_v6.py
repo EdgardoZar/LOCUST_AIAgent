@@ -386,8 +386,16 @@ class RickAndMortyApiTestUser(HttpUser):
                         # Extract variables from response
                         try:
                             response_data = response.json()
+                            
+                            # Debug: Print response structure
+                            print(f'DEBUG: Response data keys: {list(response_data.keys())}')
+                            if 'results' in response_data:
+                                print(f'DEBUG: Results array length: {len(response_data["results"])}')
+                                if response_data["results"]:
+                                    print(f'DEBUG: First result keys: {list(response_data["results"][0].keys())}')
 
                             # Extract character_ids using JSONPath: $.results[*].id
+                            print(f'DEBUG: About to extract character_ids with $.results[*].id')
                             character_ids_value = self._extract_json_path(response_data, '$.results[*].id')
                             if character_ids_value is not None:
 
@@ -402,6 +410,7 @@ class RickAndMortyApiTestUser(HttpUser):
                                 self.logger.warning(f'Failed to extract character_ids using JSONPath: $.results[*].id')
 
                             # Extract character_names using JSONPath: $.results[*].name
+                            print(f'DEBUG: About to extract character_names with $.results[*].name')
                             character_names_value = self._extract_json_path(response_data, '$.results[*].name')
                             if character_names_value is not None:
 
@@ -416,6 +425,7 @@ class RickAndMortyApiTestUser(HttpUser):
                                 self.logger.warning(f'Failed to extract character_names using JSONPath: $.results[*].name')
 
                             # Extract page_number using JSONPath: $.info.next
+                            print(f'DEBUG: About to extract page_number with $.info.next')
                             page_number_value = self._extract_json_path(response_data, '$.info.next')
                             if page_number_value is not None:
 
@@ -433,6 +443,7 @@ class RickAndMortyApiTestUser(HttpUser):
                                 self.logger.warning(f'Failed to extract page_number using JSONPath: $.info.next')
 
                         except Exception as e:
+                            print(f'DEBUG: Exception in extraction: {str(e)}')
                             self.logger.error(f'Error extracting variables: {{str(e)}}')
 
                         # Run assertions
