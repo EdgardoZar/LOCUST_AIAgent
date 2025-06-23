@@ -589,11 +589,19 @@ class {class_name}(HttpUser):
                 catch_response=True) as response:
 """
             
-            # Add extraction code
-            script_content += self._generate_extraction_code(extract)
+            # Add extraction code with proper indentation
+            extraction_code = self._generate_extraction_code(extract)
+            # Indent the extraction code properly
+            extraction_code = '\n'.join('                ' + line if line.strip() else line 
+                                      for line in extraction_code.split('\n'))
+            script_content += extraction_code
             
-            # Add assertion code
-            script_content += self._generate_assertion_code(assertions)
+            # Add assertion code with proper indentation
+            assertion_code = self._generate_assertion_code(assertions)
+            # Indent the assertion code properly
+            assertion_code = '\n'.join('                ' + line if line.strip() else line 
+                                     for line in assertion_code.split('\n'))
+            script_content += assertion_code
             
             script_content += """
         except Exception as e:
