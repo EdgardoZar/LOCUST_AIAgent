@@ -249,21 +249,34 @@ class EnhancedScriptGenerator:
             if json_value is not None:
 """
                 
+                # Add conditions if they exist
+                has_conditions = False
                 if expected is not None:
                     code += f"""
                 if json_value != {repr(expected)}:
                     assertion_failures.append(f'{description}: expected {repr(expected)}, got {{json_value}}')
 """
+                    has_conditions = True
                 if min_val is not None:
                     code += f"""
                 if json_value < {min_val}:
                     assertion_failures.append(f'{description}: value {{json_value}} is below minimum {min_val}')
 """
+                    has_conditions = True
                 if max_val is not None:
                     code += f"""
                 if json_value > {max_val}:
                     assertion_failures.append(f'{description}: value {{json_value}} exceeds maximum {max_val}')
 """
+                    has_conditions = True
+                
+                # If no conditions were added, add a simple validation
+                if not has_conditions:
+                    code += f"""
+                # JSONPath value exists and is valid
+                self.logger.info(f'JSONPath assertion passed: {{json_value}}')
+"""
+                
                 code += """
             else:
                 assertion_failures.append(f'{description}: JSONPath expression returned None')
