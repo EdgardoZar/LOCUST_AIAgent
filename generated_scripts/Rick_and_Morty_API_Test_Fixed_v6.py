@@ -192,10 +192,11 @@ class RickAndMortyApiTestUser(HttpUser):
                         array_data = json.loads(self.variables[array_var])
                         if isinstance(array_data, list) and array_data:
                             subset = random.sample(array_data, min(n, len(array_data)))
-                            return json.dumps(subset)
+                            # Return comma-separated values for URL usage instead of JSON array
+                            return ','.join(map(str, subset))
                     except (json.JSONDecodeError, TypeError):
                         pass
-                return '[]'  # fallback
+                return ''  # fallback
             text = re.sub(random_subset_pattern, replace_random_subset, text)
             
             # Handle random_index_from_array(array_var) function
@@ -349,9 +350,9 @@ class RickAndMortyApiTestUser(HttpUser):
                                     assertion_failures.append(f'Should have at least 1 page: value {json_value} is below minimum 1')
 
                             else:
-                                assertion_failures.append(f'{description}: JSONPath expression returned None')
+                                assertion_failures.append(f'Should have at least 1 page: JSONPath expression returned None')
                         except Exception as e:
-                            assertion_failures.append(f'{description}: error evaluating JSONPath - {{str(e)}}')
+                            assertion_failures.append(f'Should have at least 1 page: error evaluating JSONPath - {str(e)}')
 
                         # JSONPath assertion: $.info.count
                         try:
@@ -362,9 +363,9 @@ class RickAndMortyApiTestUser(HttpUser):
                                     assertion_failures.append(f'Should have at least 1 character: value {json_value} is below minimum 1')
 
                             else:
-                                assertion_failures.append(f'{description}: JSONPath expression returned None')
+                                assertion_failures.append(f'Should have at least 1 character: JSONPath expression returned None')
                         except Exception as e:
-                            assertion_failures.append(f'{description}: error evaluating JSONPath - {{str(e)}}')
+                            assertion_failures.append(f'Should have at least 1 character: error evaluating JSONPath - {str(e)}')
 
                         # Response time assertion
                         if response.elapsed.total_seconds() * 1000 > 5000:
@@ -469,9 +470,9 @@ class RickAndMortyApiTestUser(HttpUser):
                                     assertion_failures.append(f'Should have at least 1 character in results: value {json_value} is below minimum 1')
 
                             else:
-                                assertion_failures.append(f'{description}: JSONPath expression returned None')
+                                assertion_failures.append(f'Should have at least 1 character in results: JSONPath expression returned None')
                         except Exception as e:
-                            assertion_failures.append(f'{description}: error evaluating JSONPath - {{str(e)}}')
+                            assertion_failures.append(f'Should have at least 1 character in results: error evaluating JSONPath - {str(e)}')
 
                         # Response time assertion
                         if response.elapsed.total_seconds() * 1000 > 5000:
@@ -586,9 +587,9 @@ class RickAndMortyApiTestUser(HttpUser):
                                     assertion_failures.append(f'Character should have a valid ID: value {json_value} is below minimum 1')
 
                             else:
-                                assertion_failures.append(f'{description}: JSONPath expression returned None')
+                                assertion_failures.append(f'Character should have a valid ID: JSONPath expression returned None')
                         except Exception as e:
-                            assertion_failures.append(f'{description}: error evaluating JSONPath - {{str(e)}}')
+                            assertion_failures.append(f'Character should have a valid ID: error evaluating JSONPath - {str(e)}')
 
                         # JSONPath assertion: $.name
                         try:
@@ -599,9 +600,9 @@ class RickAndMortyApiTestUser(HttpUser):
                                 self.logger.info(f'JSONPath assertion passed: {json_value}')
 
                             else:
-                                assertion_failures.append(f'{description}: JSONPath expression returned None')
+                                assertion_failures.append(f'Character should have a name: JSONPath expression returned None')
                         except Exception as e:
-                            assertion_failures.append(f'{description}: error evaluating JSONPath - {{str(e)}}')
+                            assertion_failures.append(f'Character should have a name: error evaluating JSONPath - {str(e)}')
 
                         # JSONPath assertion: $.status
                         try:
@@ -612,9 +613,9 @@ class RickAndMortyApiTestUser(HttpUser):
                                 self.logger.info(f'JSONPath assertion passed: {json_value}')
 
                             else:
-                                assertion_failures.append(f'{description}: JSONPath expression returned None')
+                                assertion_failures.append(f'Character status should be valid: JSONPath expression returned None')
                         except Exception as e:
-                            assertion_failures.append(f'{description}: error evaluating JSONPath - {{str(e)}}')
+                            assertion_failures.append(f'Character status should be valid: error evaluating JSONPath - {str(e)}')
 
                         # Response time assertion
                         if response.elapsed.total_seconds() * 1000 > 3000:

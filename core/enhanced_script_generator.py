@@ -280,7 +280,7 @@ class EnhancedScriptGenerator:
                 self.logger.info(f'JSONPath assertion passed: {{json_value}}')
 """
                 
-                code += """
+                code += f"""
             else:
                 assertion_failures.append(f'{description}: JSONPath expression returned None')
         except Exception as e:
@@ -493,10 +493,11 @@ class EnhancedScriptGenerator:
                         array_data = json.loads(self.variables[array_var])
                         if isinstance(array_data, list) and array_data:
                             subset = random.sample(array_data, min(n, len(array_data)))
-                            return json.dumps(subset)
+                            # Return comma-separated values for URL usage instead of JSON array
+                            return ','.join(map(str, subset))
                     except (json.JSONDecodeError, TypeError):
                         pass
-                return '[]'  # fallback
+                return ''  # fallback
             text = re.sub(random_subset_pattern, replace_random_subset, text)
             
             # Handle random_index_from_array(array_var) function
