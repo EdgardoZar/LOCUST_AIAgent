@@ -100,26 +100,29 @@ class EnhancedScriptGenerator:
             
     def _generate_data_source_code(self) -> str:
         """Generate code for loading and managing data sources"""
-        if not self.data_sources:
-            return ""
-            
         code = """
     def load_test_data(self):
         \"\"\"Load test data from various sources\"\"\"
         self.test_data = {}
 """
         
-        for source_name, data in self.data_sources.items():
-            code += f"""
+        if self.data_sources:
+            for source_name, data in self.data_sources.items():
+                code += f"""
         # Load {source_name} data
         self.test_data['{source_name}'] = {repr(data)}
 """
-            
-        code += """
+                
+            code += """
         # Randomize data for each user
         for source_name, data in self.test_data.items():
             if data and isinstance(data, list):
                 self.test_data[f'{source_name}_current'] = random.choice(data)
+"""
+        else:
+            code += """
+        # No data sources defined - using empty test data
+        pass
 """
         
         return code
