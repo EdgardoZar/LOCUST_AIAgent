@@ -327,24 +327,56 @@ class EnhancedScriptGenerator:
             parts = expression[2:].split('.')
             current = data
             
-            for part in parts:
+            # Debug output
+            self.logger.info(f'JSONPath extraction: {expression}')
+            self.logger.info(f'Input data type: {type(data)}')
+            if isinstance(data, dict):
+                self.logger.info(f'Available keys: {list(data.keys())}')
+            elif isinstance(data, list):
+                self.logger.info(f'Array length: {len(data)}')
+            
+            for i, part in enumerate(parts):
+                self.logger.info(f'Processing part {i+1}: {part}, current type: {type(current)}')
+                
                 if isinstance(current, dict):
-                    current = current.get(part)
+                    if part in current:
+                        current = current[part]
+                        self.logger.info(f'Found key {part}, new current type: {type(current)}')
+                    else:
+                        self.logger.warning(f'Key {part} not found in dict. Available keys: {list(current.keys())}')
+                        return None
                 elif isinstance(current, list):
                     if part == '*':
                         # Wildcard - return the entire array
+                        self.logger.info(f'Wildcard found, returning array with {len(current)} items')
                         return current
+                    elif part.endswith('[*]'):
+                        # Array wildcard with property extraction
+                        key = part[:-3]  # Remove [*] suffix
+                        if key in current[0] if current else False:
+                            # Extract the property from each item in the array
+                            result = [item.get(key) for item in current if isinstance(item, dict)]
+                            self.logger.info(f'Extracted {key} from {len(current)} items, got {len(result)} values')
+                            return result
+                        else:
+                            self.logger.warning(f'Property {key} not found in array items')
+                            return None
                     elif part.isdigit():
                         index = int(part)
                         if 0 <= index < len(current):
                             current = current[index]
+                            self.logger.info(f'Accessed index {index}, new current type: {type(current)}')
                         else:
+                            self.logger.warning(f'Index {index} out of range for array of length {len(current)}')
                             return None
                     else:
+                        self.logger.warning(f'Invalid part {part} for array type')
                         return None
                 else:
+                    self.logger.warning(f'Cannot process part {part} on type {type(current)}')
                     return None
                     
+            self.logger.info(f'Final result: {current}')
             return current
         except Exception as e:
             self.logger.error(f'Error extracting JSONPath {expression}: {{str(e)}}')
