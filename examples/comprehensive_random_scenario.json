@@ -1,0 +1,154 @@
+{
+  "name": "Comprehensive Random Selection Test",
+  "description": "Demonstrates all random selection features including array extraction and dynamic parameter usage",
+  "base_url": "https://api.example.com",
+  "min_wait": 1000,
+  "max_wait": 3000,
+  "steps": [
+    {
+      "id": "get_users",
+      "name": "Get All Users - Extract User IDs",
+      "method": "GET",
+      "url": "/api/users",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "extract": {
+        "user_ids": {
+          "type": "json_path",
+          "expression": "$.users[*].id"
+        },
+        "user_names": {
+          "type": "json_path",
+          "expression": "$.users[*].name"
+        },
+        "total_users": {
+          "type": "json_path",
+          "expression": "$.total"
+        }
+      },
+      "assertions": [
+        {
+          "type": "status_code",
+          "expected": 200,
+          "description": "Users API should return 200 status"
+        },
+        {
+          "type": "json_path",
+          "expression": "$.total",
+          "min": 1,
+          "description": "Should have at least 1 user"
+        }
+      ]
+    },
+    {
+      "id": "get_random_user",
+      "name": "Get Random User Details",
+      "method": "GET",
+      "url": "/api/users/{{random_from_array(user_ids)}}",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "extract": {
+        "user_products": {
+          "type": "json_path",
+          "expression": "$.products[*].id"
+        },
+        "user_orders": {
+          "type": "json_path",
+          "expression": "$.orders[*].id"
+        }
+      },
+      "assertions": [
+        {
+          "type": "status_code",
+          "expected": 200,
+          "description": "User details API should return 200 status"
+        }
+      ]
+    },
+    {
+      "id": "get_random_product",
+      "name": "Get Random Product from User",
+      "method": "GET",
+      "url": "/api/products/{{random_from_array(user_products)}}",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "extract": {
+        "product_categories": {
+          "type": "json_path",
+          "expression": "$.categories[*]"
+        },
+        "product_price": {
+          "type": "json_path",
+          "expression": "$.price"
+        }
+      },
+      "assertions": [
+        {
+          "type": "status_code",
+          "expected": 200,
+          "description": "Product API should return 200 status"
+        }
+      ]
+    },
+    {
+      "id": "get_random_subset",
+      "name": "Get Random Subset of Products",
+      "method": "GET",
+      "url": "/api/products/batch",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "params": {
+        "ids": "{{random_subset_from_array(user_products, 3)}}"
+      },
+      "assertions": [
+        {
+          "type": "status_code",
+          "expected": 200,
+          "description": "Batch products API should return 200 status"
+        }
+      ]
+    },
+    {
+      "id": "get_by_random_index",
+      "name": "Get Product by Random Index",
+      "method": "GET",
+      "url": "/api/products/by-index/{{random_index_from_array(user_products)}}",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "assertions": [
+        {
+          "type": "status_code",
+          "expected": 200,
+          "description": "Product by index API should return 200 status"
+        }
+      ]
+    },
+    {
+      "id": "search_with_random",
+      "name": "Search with Random Parameters",
+      "method": "GET",
+      "url": "/api/search",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "params": {
+        "category": "{{random_from_array(product_categories)}}",
+        "min_price": "{{random(10, 100)}}",
+        "max_price": "{{random(100, 500)}}",
+        "limit": "{{random(5, 20)}}"
+      },
+      "assertions": [
+        {
+          "type": "status_code",
+          "expected": 200,
+          "description": "Search API should return 200 status"
+        }
+      ]
+    }
+  ]
+} 

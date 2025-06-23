@@ -383,4 +383,14 @@ For issues and questions:
 1. Check the troubleshooting section
 2. Review the examples
 3. Check the SwarmTest documentation
-4. Create an issue in the project repository 
+4. Create an issue in the project repository
+
+## Documentation
+
+- [Enhanced Features Guide](docs/ENHANCED_FEATURES_GUIDE.md) - Advanced features and capabilities
+- [Random Selection Guide](docs/RANDOM_SELECTION_GUIDE.md) - Dynamic random selection features for realistic test scenarios
+- [Jenkins Complete Guide](docs/JENKINS_COMPLETE_GUIDE.md) - Comprehensive Jenkins integration guide
+- [Jenkins Setup Checklist](docs/JENKINS_SETUP_CHECKLIST.md) - Step-by-step Jenkins setup
+- [Jenkins Environment Variables](docs/JENKINS_ENVIRONMENT_VARIABLES.md) - Environment variable configuration
+- [Jenkins Parameters Quick Reference](docs/JENKINS_PARAMETERS_QUICK_REFERENCE.md) - Parameter configuration guide
+- [Jenkins Pipeline Parameters Guide](docs/JENKINS_PIPELINE_PARAMETERS_GUIDE.md) - Advanced pipeline configuration 

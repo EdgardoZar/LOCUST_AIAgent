@@ -138,20 +138,40 @@ class EnhancedScriptGenerator:
         for var_name, config in extract_config.items():
             extract_type = config.get('type', 'json_path')
             expression = config.get('expression', '')
+            transform = config.get('transform', '')
             
             if extract_type == 'json_path':
                 code += f"""
             # Extract {var_name} using JSONPath: {expression}
             {var_name}_value = self._extract_json_path(response_data, '{expression}')
             if {var_name}_value is not None:
-                self.variables['{var_name}'] = str({var_name}_value)
-                self.logger.info(f'Extracted {{var_name}} = {{self.variables["{var_name}"]}}')
+"""
+                if transform:
+                    code += f"""
+                # Apply custom transformation: {transform}
+                {var_name}_value = self._apply_transform({var_name}_value, '{transform}')
+"""
+                code += f"""
+                # Store as JSON if it's an array, otherwise as string
+                if isinstance({var_name}_value, list):
+                    self.variables['{var_name}'] = json.dumps({var_name}_value)
+                    self.logger.info(f'Extracted array {{var_name}} with {{len({var_name}_value)}} items')
+                else:
+                    self.variables['{var_name}'] = str({var_name}_value)
+                    self.logger.info(f'Extracted {{var_name}} = {{self.variables["{var_name}"]}}')
 """
             elif extract_type == 'regex':
                 code += f"""
             # Extract {var_name} using regex: {expression}
             {var_name}_value = self._extract_regex(response.text, r'{expression}')
             if {var_name}_value:
+"""
+                if transform:
+                    code += f"""
+                # Apply custom transformation: {transform}
+                {var_name}_value = self._apply_transform({var_name}_value, '{transform}')
+"""
+                code += f"""
                 self.variables['{var_name}'] = {var_name}_value
                 self.logger.info(f'Extracted {{var_name}} = {{self.variables["{var_name}"]}}')
 """
@@ -162,6 +182,13 @@ class EnhancedScriptGenerator:
             # Extract {var_name} using boundaries: '{left_boundary}' -> '{right_boundary}'
             {var_name}_value = self._extract_boundary(response.text, '{left_boundary}', '{right_boundary}')
             if {var_name}_value:
+"""
+                if transform:
+                    code += f"""
+                # Apply custom transformation: {transform}
+                {var_name}_value = self._apply_transform({var_name}_value, '{transform}')
+"""
+                code += f"""
                 self.variables['{var_name}'] = {var_name}_value
                 self.logger.info(f'Extracted {{var_name}} = {{self.variables["{var_name}"]}}')
 """
@@ -281,10 +308,16 @@ class EnhancedScriptGenerator:
             for part in parts:
                 if isinstance(current, dict):
                     current = current.get(part)
-                elif isinstance(current, list) and part.isdigit():
-                    index = int(part)
-                    if 0 <= index < len(current):
-                        current = current[index]
+                elif isinstance(current, list):
+                    if part == '*':
+                        # Wildcard - return the entire array
+                        return current
+                    elif part.isdigit():
+                        index = int(part)
+                        if 0 <= index < len(current):
+                            current = current[index]
+                        else:
+                            return None
                     else:
                         return None
                 else:
@@ -331,6 +364,114 @@ class EnhancedScriptGenerator:
         except Exception as e:
             self.logger.error(f'Error getting test data value: {{str(e)}}')
             return None
+            
+    def _replace_dynamic_functions(self, text):
+        \"\"\"Replace dynamic function calls in text\"\"\"
+        try:
+            # Handle random(min, max) function
+            random_pattern = r'\\{\\{random\\(([^,]+),\\s*([^)]+)\\)\\}\\}'
+            def replace_random(match):
+                min_val = match.group(1).strip()
+                max_val = match.group(2).strip()
+                # Try to resolve variables in min/max values
+                min_val = self._resolve_single_value(min_val)
+                max_val = self._resolve_single_value(max_val)
+                try:
+                    min_int = int(min_val)
+                    max_int = int(max_val)
+                    return str(random.randint(min_int, max_int))
+                except (ValueError, TypeError):
+                    return '1'  # fallback
+            text = re.sub(random_pattern, replace_random, text)
+            
+            # Handle random_from_array(array_var) function
+            random_array_pattern = r'\\{\\{random_from_array\\(([^)]+)\\)\\}\\}'
+            def replace_random_array(match):
+                array_var = match.group(1).strip()
+                if array_var in self.variables:
+                    try:
+                        # Try to parse as JSON array first
+                        array_data = json.loads(self.variables[array_var])
+                        if isinstance(array_data, list) and array_data:
+                            return str(random.choice(array_data))
+                    except (json.JSONDecodeError, TypeError):
+                        # If not JSON, try to split by comma (fallback)
+                        try:
+                            array_str = self.variables[array_var]
+                            if ',' in array_str:
+                                array_data = [item.strip() for item in array_str.split(',')]
+                                if array_data:
+                                    return str(random.choice(array_data))
+                        except:
+                            pass
+                return '1'  # fallback
+            text = re.sub(random_array_pattern, replace_random_array, text)
+            
+            # Handle random_subset_from_array(array_var, n) function
+            random_subset_pattern = r'\\{\\{random_subset_from_array\\(([^,]+),\\s*([^)]+)\\)\\}\\}'
+            def replace_random_subset(match):
+                array_var = match.group(1).strip()
+                n_val = match.group(2).strip()
+                n_val = self._resolve_single_value(n_val)
+                try:
+                    n = int(n_val)
+                except (ValueError, TypeError):
+                    n = 1
+                
+                if array_var in self.variables:
+                    try:
+                        array_data = json.loads(self.variables[array_var])
+                        if isinstance(array_data, list) and array_data:
+                            subset = random.sample(array_data, min(n, len(array_data)))
+                            return json.dumps(subset)
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                return '[]'  # fallback
+            text = re.sub(random_subset_pattern, replace_random_subset, text)
+            
+            # Handle random_index_from_array(array_var) function
+            random_index_pattern = r'\\{\\{random_index_from_array\\(([^)]+)\\)\\}\\}'
+            def replace_random_index(match):
+                array_var = match.group(1).strip()
+                if array_var in self.variables:
+                    try:
+                        array_data = json.loads(self.variables[array_var])
+                        if isinstance(array_data, list) and array_data:
+                            return str(random.randint(0, len(array_data) - 1))
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                return '0'  # fallback
+            text = re.sub(random_index_pattern, replace_random_index, text)
+            
+            return text
+        except Exception as e:
+            self.logger.error(f'Error replacing dynamic functions: {{str(e)}}')
+            return text
+    
+    def _resolve_single_value(self, value):
+        \"\"\"Resolve a single value, handling variable references\"\"\"
+        if value in self.variables:
+            return self.variables[value]
+        return value
+        
+    def _apply_transform(self, value, transform_name):
+        \"\"\"Apply custom transformation to extracted value\"\"\"
+        try:
+            if transform_name == 'extract_page_number':
+                return self._extract_page_number(value)
+            # Add more transformations as needed
+            return value
+        except Exception as e:
+            self.logger.error(f'Error applying transform {transform_name}: {{str(e)}}')
+            return value
+            
+    def _extract_page_number(self, url):
+        \"\"\"Extract page number from next URL\"\"\"
+        if url and 'page=' in url:
+            match = re.search(r'page=(\\d+)', url)
+            if match:
+                return int(match.group(1))
+        return 1
 """
         
     def generate_script(self):
@@ -366,6 +507,9 @@ class {class_name}(HttpUser):
         if not text:
             return text
         try:
+            # Handle dynamic functions first
+            text = self._replace_dynamic_functions(text)
+            
             # Replace test data variables
             for source_name, data in self.test_data.items():
                 if source_name.endswith('_current') and isinstance(data, dict):
