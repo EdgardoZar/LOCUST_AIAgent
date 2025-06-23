@@ -58,12 +58,13 @@ def read_summary_stats(stats_file_path):
     try:
         with open(stats_file_path, mode='r', encoding='utf-8') as infile:
             reader = csv.reader(infile)
-            all_rows = list(reader)
+            # Read all rows and filter out any that are empty
+            all_rows = [row for row in reader if row]
 
         if not all_rows:
-            raise ValueError(f"The stats file is empty: {stats_file_path}")
+            raise ValueError(f"The stats file is empty or contains only blank lines: {stats_file_path}")
 
-        # The last row should be the aggregated summary
+        # The last non-empty row should be the aggregated summary
         summary_row = all_rows[-1]
 
         # A valid summary row should have at least 8 columns
