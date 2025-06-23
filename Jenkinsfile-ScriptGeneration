@@ -59,17 +59,20 @@ pipeline {
         
         stage('Checkout') {
             steps {
-                checkout([$class: 'GitSCM', 
-                    branches: [[name: '*/main']], 
-                    doGenerateSubmoduleConfigurations: false, 
-                    extensions: [], 
-                    submoduleCfg: [], 
-                    userRemoteConfigs: [[
-                        credentialsId: 'github-credentials',
-                        url: 'https://github.com/EdgardoZar/LOCUST_AIAgent.git'
-                    ]]
-                ])
                 script {
+                    // Get branch from SCM configuration to ensure we are not in a detached HEAD state
+                    def branchSpec = scm.branches[0].name
+                    def branchName = branchSpec.substring(branchSpec.lastIndexOf('/') + 1)
+                    
+                    checkout([
+                        $class: 'GitSCM',
+                        branches: [[name: branchName]],
+                        userRemoteConfigs: scm.userRemoteConfigs
+                    ])
+                    
+                    // Set env.BRANCH_NAME explicitly for later stages
+                    env.BRANCH_NAME = branchName
+                    
                     echo "=== Script Generation Pipeline ==="
                     echo "Build Number: ${env.BUILD_NUMBER}"
                     echo "Job Name: ${env.JOB_NAME}"
@@ -87,9 +90,7 @@ pipeline {
                 script {
                     echo "Setting up environment..."
                     echo "Python Version: ${PYTHON_VERSION}"
-                    echo "Scripts Branch: ${GIT_SCRIPTS_BRANCH}"
-                    echo "Git User: ${GIT_USER}"
-                    echo "Git Email: ${GIT_EMAIL}"
+                    echo "Git Branch: ${env.BRANCH_NAME}"
                     
                     // Create directories
                     bat "if not exist \"${WORKSPACE_DIR}\" mkdir \"${WORKSPACE_DIR}\""
@@ -318,10 +319,14 @@ except Exception as e:
         stage('Commit to Git') {
             steps {
                 script {
+                    def branchName = env.BRANCH_NAME
+                    if (!branchName) {
+                        error "Could not determine branch name. Aborting git commit."
+                    }
                     echo "Committing generated script to Git repository..."
-                    echo "Branch: main"
+                    echo "Branch: ${branchName}"
                     echo "Script: ${env.GENERATED_SCRIPT}"
-                    echo "DEBUG: Committing to main branch"
+                    echo "DEBUG: Committing to ${branchName} branch"
                     
                     // Define commit message outside credentials block
                     def commitMessage = params.GIT_COMMIT_MESSAGE ?: "Generated script: ${params.SCENARIO_NAME} - ${TIMESTAMP} - ${BUILD_INFO}"
@@ -330,8 +335,8 @@ except Exception as e:
                     withCredentials([usernamePassword(credentialsId: 'github-credentials', usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD')]) {
                         bat """
                             echo DEBUG: Configuring Git with credentials
-                            git config user.email "${GIT_EMAIL}"
-                            git config user.name "${GIT_USER}"
+                            git config user.email "${GIT_USERNAME}@users.noreply.github.com"
+                            git config user.name "${GIT_USERNAME}"
                             echo DEBUG: Git config completed
                         """
                         
@@ -345,14 +350,12 @@ except Exception as e:
                             git rev-parse --abbrev-ref HEAD
                         """
                         
-                        // Ensure we're on main branch and pull latest changes
+                        // Ensure we're on the correct branch and pull latest changes
                         bat """
-                            echo DEBUG: Checking out main branch to avoid detached HEAD
-                            git checkout main
-                            echo DEBUG: Current branch after checkout:
-                            git branch
-                            echo DEBUG: Pulling latest changes from remote main
-                            git pull https://%GIT_USERNAME%:%GIT_PASSWORD%@github.com/EdgardoZar/LOCUST_AIAgent.git main
+                            echo DEBUG: Current branch is now ${branchName}
+                            git checkout ${branchName}
+                            echo DEBUG: Pulling latest changes from remote ${branchName}
+                            git pull https://%GIT_USERNAME%:%GIT_PASSWORD%@github.com/EdgardoZar/LOCUST_AIAgent.git ${branchName}
                             echo DEBUG: Pull completed
                         """
                         
@@ -375,13 +378,13 @@ except Exception as e:
                             echo DEBUG: Commit completed
                         """
                         
-                        // Push to main branch with credentials
+                        // Push to the correct branch with credentials
                         bat """
-                            echo DEBUG: Pushing to main branch with credentials
+                            echo DEBUG: Pushing to ${branchName} branch with credentials
                             echo DEBUG: Checking Git remote configuration
                             git remote -v
                             echo DEBUG: Attempting push with authenticated user
-                            git push https://%GIT_USERNAME%:%GIT_PASSWORD%@github.com/EdgardoZar/LOCUST_AIAgent.git main
+                            git push https://%GIT_USERNAME%:%GIT_PASSWORD%@github.com/EdgardoZar/LOCUST_AIAgent.git ${branchName}
                             if %ERRORLEVEL% NEQ 0 (
                                 echo DEBUG: Push failed with error code %ERRORLEVEL%
                                 echo DEBUG: This might be due to authentication or network issues
@@ -392,7 +395,7 @@ except Exception as e:
                         """
                     }
                     
-                    echo "Script committed to main branch successfully"
+                    echo "Script committed to ${branchName} branch successfully"
                     echo "Commit message: ${commitMessage}"
                 }
             }
@@ -408,18 +411,20 @@ except Exception as e:
                 echo "Result: ${currentBuild.result}"
                 echo "Build URL: ${env.BUILD_URL}"
                 echo "Generated Script: ${env.GENERATED_SCRIPT}"
-                echo "Branch: main"
+                echo "Branch: ${env.BRANCH_NAME}"
                 echo "Environment: ${params.ENVIRONMENT}"
                 echo "Scenario Steps: ${env.SCENARIO_STEPS_COUNT}"
             }
         }
         
         success {
-            echo "✅ Script generated successfully!"
-            echo "📁 Script: ${env.GENERATED_SCRIPT}"
-            echo "📦 Script archived and ready for download"
-            echo "🌿 Script committed to main branch"
-            echo "🔗 You can now use this script in the Test Execution Pipeline"
+            script {
+                echo "✅ Script generated successfully!"
+                echo "📁 Script: ${env.GENERATED_SCRIPT}"
+                echo "📦 Script archived and ready for download"
+                echo "🌿 Script committed to ${env.BRANCH_NAME} branch"
+                echo "🔗 You can now use this script in the Test Execution Pipeline"
+            }
         }
         
         failure {
