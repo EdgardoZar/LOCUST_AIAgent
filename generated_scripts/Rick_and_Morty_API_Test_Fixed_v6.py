@@ -23,20 +23,39 @@ class RickAndMortyApiTestUser(HttpUser):
             if not expression.startswith('$'):
                 return None
                 
-            parts = expression[2:].split('.')
+            # Split the path more intelligently to handle [*] syntax
+            parts = []
+            current_part = ""
+            i = 2  # Skip the '$.' prefix
+            while i < len(expression):
+                char = expression[i]
+                if char == '.':
+                    if current_part:
+                        parts.append(current_part)
+                        current_part = ""
+                elif char == '[' and i + 2 < len(expression) and expression[i:i+3] == '[*]':
+                    if current_part:
+                        parts.append(current_part)
+                    parts.append('[*]')
+                    current_part = ""
+                    i += 2  # Skip the '[*]'
+                else:
+                    current_part += char
+                i += 1
+            if current_part:
+                parts.append(current_part)
             current = data
-            
-            # Debug output - using print for immediate visibility
+            i = 0
             print(f'DEBUG: JSONPath extraction: {expression}')
+            print(f'DEBUG: Parsed parts: {parts}')
             print(f'DEBUG: Input data type: {type(data)}')
             if isinstance(data, dict):
                 print(f'DEBUG: Available keys: {list(data.keys())}')
             elif isinstance(data, list):
                 print(f'DEBUG: Array length: {len(data)}')
-            
-            for i, part in enumerate(parts):
+            while i < len(parts):
+                part = parts[i]
                 print(f'DEBUG: Processing part {i+1}: {part}, current type: {type(current)}')
-                
                 if isinstance(current, dict):
                     if part in current:
                         current = current[part]
@@ -45,28 +64,17 @@ class RickAndMortyApiTestUser(HttpUser):
                         print(f'DEBUG: Key {part} not found in dict. Available keys: {list(current.keys())}')
                         return None
                 elif isinstance(current, list):
-                    if part == '*':
-                        # Wildcard - return the entire array
-                        print(f'DEBUG: Wildcard found, returning array with {len(current)} items')
-                        return current
-                    elif part.endswith('[*]'):
-                        # Array wildcard with property extraction
-                        key = part[:-3]  # Remove [*] suffix
-                        print(f'DEBUG: Array wildcard extraction for key: {key}')
-                        print(f'DEBUG: Array has {len(current)} items')
-                        if current and isinstance(current[0], dict):
-                            print(f'DEBUG: First item keys: {list(current[0].keys())}')
-                            if key in current[0]:
-                                # Extract the property from each item in the array
-                                result = [item.get(key) for item in current if isinstance(item, dict)]
-                                print(f'DEBUG: Extracted {key} from {len(current)} items, got {len(result)} values')
-                                return result
-                            else:
-                                print(f'DEBUG: Property {key} not found in array items')
-                                return None
-                        else:
-                            print(f'DEBUG: Array is empty or items are not dicts')
-                            return None
+                    if part == '[*]':
+                        # If this is the last part, just return the array
+                        if i + 1 == len(parts):
+                            print(f'DEBUG: Wildcard found, returning array with {len(current)} items')
+                            return current
+                        # Otherwise, extract the next property from each item and continue
+                        next_part = parts[i + 1]
+                        print(f'DEBUG: Extracting property {next_part} from each array item')
+                        current = [item.get(next_part) for item in current if isinstance(item, dict) and next_part in item]
+                        print(f'DEBUG: Extracted {next_part} from {len(current)} items')
+                        i += 1  # Skip the next part, since we've just processed it
                     elif part.isdigit():
                         index = int(part)
                         if 0 <= index < len(current):
@@ -81,7 +89,7 @@ class RickAndMortyApiTestUser(HttpUser):
                 else:
                     print(f'DEBUG: Cannot process part {part} on type {type(current)}')
                     return None
-                    
+                i += 1
             print(f'DEBUG: Final result: {current}')
             return current
         except Exception as e:
@@ -239,24 +247,34 @@ class RickAndMortyApiTestUser(HttpUser):
         self.variables = {}
         self.logger = logging.getLogger(__name__)
         self.load_test_data()
-
+    
     def replace_variables(self, text):
-        """Replace variables and dynamic functions in text"""
+        """Replace variables in text with actual values"""
+        if not text:
+            return text
         try:
-            # First replace dynamic functions
+            # Handle dynamic functions first
             text = self._replace_dynamic_functions(text)
             
-            # Then replace variable references
-            for var_name, var_value in self.variables.items():
-                placeholder = f'{{{{{var_name}}}}}'
+            # Replace test data variables
+            for source_name, data in self.test_data.items():
+                if source_name.endswith('_current') and isinstance(data, dict):
+                    for field_name, value in data.items():
+                        placeholder = f'{{{field_name}}}'
+                        if placeholder in text:
+                            text = text.replace(placeholder, str(value))
+                            
+            # Replace extracted variables
+            for var_name, value in self.variables.items():
+                placeholder = f'{{{var_name}}}'
                 if placeholder in text:
-                    text = text.replace(placeholder, str(var_value))
+                    text = text.replace(placeholder, str(value))
                     
             return text
         except Exception as e:
-            self.logger.error(f'Error replacing variables: {{str(e)}}')
+            self.logger.error(f'Error replacing variables: {str(e)}')
             return text
-
+    
     @task
     def run_scenario(self):
         """Execute the complete test scenario"""
@@ -331,9 +349,9 @@ class RickAndMortyApiTestUser(HttpUser):
                                     assertion_failures.append(f'Should have at least 1 page: value {json_value} is below minimum 1')
 
                             else:
-                                assertion_failures.append(f'Pages info: JSONPath expression returned None')
+                                assertion_failures.append(f'{description}: JSONPath expression returned None')
                         except Exception as e:
-                            assertion_failures.append(f'Pages info: error evaluating JSONPath - {{str(e)}}')
+                            assertion_failures.append(f'{description}: error evaluating JSONPath - {{str(e)}}')
 
                         # JSONPath assertion: $.info.count
                         try:
@@ -344,9 +362,9 @@ class RickAndMortyApiTestUser(HttpUser):
                                     assertion_failures.append(f'Should have at least 1 character: value {json_value} is below minimum 1')
 
                             else:
-                                assertion_failures.append(f'Character count: JSONPath expression returned None')
+                                assertion_failures.append(f'{description}: JSONPath expression returned None')
                         except Exception as e:
-                            assertion_failures.append(f'Character count: error evaluating JSONPath - {{str(e)}}')
+                            assertion_failures.append(f'{description}: error evaluating JSONPath - {{str(e)}}')
 
                         # Response time assertion
                         if response.elapsed.total_seconds() * 1000 > 5000:
@@ -365,7 +383,7 @@ class RickAndMortyApiTestUser(HttpUser):
 
         # Step: Get Random Page of Characters
         try:
-            url = self.replace_variables('/api/character')
+            url = self.replace_variables('/api/character/')
             headers = {}
             headers['Content-Type'] = self.replace_variables('application/json')
 
@@ -386,16 +404,8 @@ class RickAndMortyApiTestUser(HttpUser):
                         # Extract variables from response
                         try:
                             response_data = response.json()
-                            
-                            # Debug: Print response structure
-                            print(f'DEBUG: Response data keys: {list(response_data.keys())}')
-                            if 'results' in response_data:
-                                print(f'DEBUG: Results array length: {len(response_data["results"])}')
-                                if response_data["results"]:
-                                    print(f'DEBUG: First result keys: {list(response_data["results"][0].keys())}')
 
                             # Extract character_ids using JSONPath: $.results[*].id
-                            print(f'DEBUG: About to extract character_ids with $.results[*].id')
                             character_ids_value = self._extract_json_path(response_data, '$.results[*].id')
                             if character_ids_value is not None:
 
@@ -410,7 +420,6 @@ class RickAndMortyApiTestUser(HttpUser):
                                 self.logger.warning(f'Failed to extract character_ids using JSONPath: $.results[*].id')
 
                             # Extract character_names using JSONPath: $.results[*].name
-                            print(f'DEBUG: About to extract character_names with $.results[*].name')
                             character_names_value = self._extract_json_path(response_data, '$.results[*].name')
                             if character_names_value is not None:
 
@@ -425,7 +434,6 @@ class RickAndMortyApiTestUser(HttpUser):
                                 self.logger.warning(f'Failed to extract character_names using JSONPath: $.results[*].name')
 
                             # Extract page_number using JSONPath: $.info.next
-                            print(f'DEBUG: About to extract page_number with $.info.next')
                             page_number_value = self._extract_json_path(response_data, '$.info.next')
                             if page_number_value is not None:
 
@@ -443,7 +451,6 @@ class RickAndMortyApiTestUser(HttpUser):
                                 self.logger.warning(f'Failed to extract page_number using JSONPath: $.info.next')
 
                         except Exception as e:
-                            print(f'DEBUG: Exception in extraction: {str(e)}')
                             self.logger.error(f'Error extracting variables: {{str(e)}}')
 
                         # Run assertions
@@ -458,13 +465,13 @@ class RickAndMortyApiTestUser(HttpUser):
                             json_value = self._extract_json_path(response.json(), '$.results')
                             if json_value is not None:
 
-                                if len(json_value) < 1:
-                                    assertion_failures.append(f'Should have at least 1 character in results: value {len(json_value)} is below minimum 1')
+                                if json_value < 1:
+                                    assertion_failures.append(f'Should have at least 1 character in results: value {json_value} is below minimum 1')
 
                             else:
-                                assertion_failures.append(f'Results array: JSONPath expression returned None')
+                                assertion_failures.append(f'{description}: JSONPath expression returned None')
                         except Exception as e:
-                            assertion_failures.append(f'Results array: error evaluating JSONPath - {{str(e)}}')
+                            assertion_failures.append(f'{description}: error evaluating JSONPath - {{str(e)}}')
 
                         # Response time assertion
                         if response.elapsed.total_seconds() * 1000 > 5000:
@@ -483,20 +490,7 @@ class RickAndMortyApiTestUser(HttpUser):
 
         # Step: Get Random Character Details
         try:
-            # Use a fallback character ID if character_ids is not available
-            if 'character_ids' not in self.variables:
-                character_id = '1'  # Fallback to Rick Sanchez
-            else:
-                try:
-                    character_ids = json.loads(self.variables['character_ids'])
-                    if isinstance(character_ids, list) and character_ids:
-                        character_id = str(random.choice(character_ids))
-                    else:
-                        character_id = '1'  # Fallback
-                except:
-                    character_id = '1'  # Fallback
-            
-            url = f'/api/character/{character_id}'
+            url = self.replace_variables('/api/character/{{random_from_array(character_ids)}}')
             headers = {}
             headers['Content-Type'] = self.replace_variables('application/json')
 
@@ -592,9 +586,9 @@ class RickAndMortyApiTestUser(HttpUser):
                                     assertion_failures.append(f'Character should have a valid ID: value {json_value} is below minimum 1')
 
                             else:
-                                assertion_failures.append(f'Character ID: JSONPath expression returned None')
+                                assertion_failures.append(f'{description}: JSONPath expression returned None')
                         except Exception as e:
-                            assertion_failures.append(f'Character ID: error evaluating JSONPath - {{str(e)}}')
+                            assertion_failures.append(f'{description}: error evaluating JSONPath - {{str(e)}}')
 
                         # JSONPath assertion: $.name
                         try:
@@ -605,9 +599,9 @@ class RickAndMortyApiTestUser(HttpUser):
                                 self.logger.info(f'JSONPath assertion passed: {json_value}')
 
                             else:
-                                assertion_failures.append(f'Character name: JSONPath expression returned None')
+                                assertion_failures.append(f'{description}: JSONPath expression returned None')
                         except Exception as e:
-                            assertion_failures.append(f'Character name: error evaluating JSONPath - {{str(e)}}')
+                            assertion_failures.append(f'{description}: error evaluating JSONPath - {{str(e)}}')
 
                         # JSONPath assertion: $.status
                         try:
@@ -618,9 +612,9 @@ class RickAndMortyApiTestUser(HttpUser):
                                 self.logger.info(f'JSONPath assertion passed: {json_value}')
 
                             else:
-                                assertion_failures.append(f'Character status: JSONPath expression returned None')
+                                assertion_failures.append(f'{description}: JSONPath expression returned None')
                         except Exception as e:
-                            assertion_failures.append(f'Character status: error evaluating JSONPath - {{str(e)}}')
+                            assertion_failures.append(f'{description}: error evaluating JSONPath - {{str(e)}}')
 
                         # Response time assertion
                         if response.elapsed.total_seconds() * 1000 > 3000:
@@ -637,43 +631,40 @@ class RickAndMortyApiTestUser(HttpUser):
         except Exception as e:
             self.logger.error(f'Error in API call: {str(e)}')
 
-        # Step: Get Multiple Random Characters (simplified to avoid URL encoding issues)
+        # Step: Get Multiple Random Characters
         try:
-            # Use a simple approach with known character IDs
-            character_ids = ['1', '2', '3']  # Rick, Morty, Summer
-            selected_ids = random.sample(character_ids, min(2, len(character_ids)))
+            url = self.replace_variables('/api/character/{{random_subset_from_array(character_ids, 3)}}')
+            headers = {}
+            headers['Content-Type'] = self.replace_variables('application/json')
+
+            headers['Accept'] = 'application/json'
             
-            for char_id in selected_ids:
-                url = f'/api/character/{char_id}'
-                headers = {}
-                headers['Content-Type'] = self.replace_variables('application/json')
-                headers['Accept'] = 'application/json'
-                
-                # Prepare request parameters
-                params = {}
-                body = None
+            # Prepare request parameters
+            params = {}
+            body = None
 
-                with self.client.get(
-                    url,
-                    headers=headers,
-                    params=params,
-                    json=body,
-                    catch_response=True) as response:
+            with self.client.get(
+                url,
+                headers=headers,
+                params=params,
+                json=body,
+                catch_response=True) as response:
 
-                            # Run assertions
-                            assertion_failures = []
+                        # Run assertions
+                        assertion_failures = []
 
-                            # Status code assertion
-                            if response.status_code != 200:
-                                assertion_failures.append(f'Character {char_id} API should return 200 status: expected 200, got {response.status_code}')
+                        # Status code assertion
+                        if response.status_code != 200:
+                            assertion_failures.append(f'Multiple characters API should return 200 status: expected 200, got {response.status_code}')
 
-                            # Report assertion failures
-                            if assertion_failures:
-                                failure_message = '; '.join(assertion_failures)
-                                response.failure(f'Assertions failed: {{failure_message}}')
-                                self.logger.error(f'Assertions failed: {{failure_message}}')
-                            else:
-                                self.logger.info(f'Character {char_id} assertions passed')
+                        # Report assertion failures
+                        if assertion_failures:
+                            failure_message = '; '.join(assertion_failures)
+                            response.failure(f'Assertions failed: {{failure_message}}')
+                            self.logger.error(f'Assertions failed: {{failure_message}}')
+                        else:
+                            self.logger.info('All assertions passed')
 
         except Exception as e:
-            self.logger.error(f'Error in API call: {str(e)}') 
+            self.logger.error(f'Error in API call: {str(e)}')
+
