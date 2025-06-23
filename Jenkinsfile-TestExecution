@@ -462,7 +462,6 @@ except Exception as e:
                     withCredentials([string(credentialsId: 'openai-api-key', variable: 'OPENAI_API_KEY')]) {
                         bat """
                             call venv\\Scripts\\activate.bat
-                            set OPENAI_API_KEY=${env.OPENAI_API_KEY}
                             python analysis/run_llm_analysis.py ^
                                 --reports_dir "${REPORTS_DIR}" ^
                                 --analysis_dir "${analysisDir}" ^

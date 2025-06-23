@@ -5,23 +5,35 @@ import os
 import argparse
 import csv
 import json
+import re
 from llm_analyzer import LLMAnalyzer
 
 def find_latest_reports(reports_dir):
-    """Finds the most recent stats and HTML report files based on timestamp."""
+    """Finds the most recent stats and HTML report files using a regex to find timestamps."""
     if not os.path.isdir(reports_dir):
         raise FileNotFoundError(f"Reports directory not found: {reports_dir}")
 
-    files = [f for f in os.listdir(reports_dir) if '_stats.csv' in f or f.endswith('.html')]
-    if not files:
+    all_files = os.listdir(reports_dir)
+    
+    # Regex to find the timestamp pattern _YYYYMMDD_HHMMSS
+    timestamp_pattern = re.compile(r'_(\d{8}_\d{6})')
+    
+    timestamps = []
+    for f in all_files:
+        match = timestamp_pattern.search(f)
+        if match:
+            timestamps.append(match.group(1))
+
+    if not timestamps:
+        print("Warning: No files with valid timestamps found.")
         return None, None
 
-    # Extract timestamps and sort
-    timestamps = sorted(list(set([f.split('_')[-2] + '_' + f.split('_')[-1].split('.')[0] for f in files])), reverse=True)
-    latest_timestamp = timestamps[0]
+    latest_timestamp = sorted(list(set(timestamps)), reverse=True)[0]
+    print(f"Found latest timestamp: {latest_timestamp}")
 
-    stats_file = next((os.path.join(reports_dir, f) for f in files if latest_timestamp in f and f.endswith('_stats.csv')), None)
-    html_file = next((os.path.join(reports_dir, f) for f in files if latest_timestamp in f and f.endswith('.html')), None)
+    # Now find the files that contain this exact timestamp
+    stats_file = next((os.path.join(reports_dir, f) for f in all_files if f"_{latest_timestamp}_" in f and f.endswith('_stats.csv')), None)
+    html_file = next((os.path.join(reports_dir, f) for f in all_files if f"_{latest_timestamp}." in f and f.endswith('.html')), None)
 
     return stats_file, html_file
 
