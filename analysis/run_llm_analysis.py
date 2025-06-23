@@ -67,9 +67,9 @@ def read_summary_stats(stats_file_path):
         # The last non-empty row should be the aggregated summary
         summary_row = all_rows[-1]
 
-        # A valid summary row should have at least 8 columns
-        if len(summary_row) < 8:
-            raise ValueError(f"The summary row in {stats_file_path} is malformed or has too few columns. Content: {summary_row}")
+        # A valid summary row should have at least 16 columns for percentiles
+        if len(summary_row) < 16:
+            raise ValueError(f"The summary row in {stats_file_path} is missing percentile data. Content: {summary_row}")
 
         # Assuming standard Locust CSV format
         return {
@@ -77,6 +77,8 @@ def read_summary_stats(stats_file_path):
             "failed_requests": int(summary_row[3]),
             "requests_per_sec": float(summary_row[5]),
             "avg_response_time": float(summary_row[7]),
+            "p90_response_time": float(summary_row[14]),
+            "p95_response_time": float(summary_row[15]),
         }
     except (ValueError, IndexError) as e:
         print(f"Error processing stats file {stats_file_path}: {e}")
@@ -104,6 +106,16 @@ def format_as_markdown(analysis_data, scenario_name, test_run_id):
 
     markdown += f"### 📝 Summary\n"
     markdown += f"{analysis_data.get('summary', 'No summary provided.')}\n\n"
+
+    # Add the new response time table
+    markdown += "### ⏱️ Response Time Analysis\n"
+    table_data = analysis_data.get('response_time_table', [])
+    if table_data:
+        markdown += "| Metric | Value |\n"
+        markdown += "|---|---|\n"
+        for row in table_data:
+            markdown += f"| {row.get('Metric')} | {row.get('Value')} |\n"
+        markdown += "\n"
 
     markdown += "### 💡 Key Insights\n"
     for insight in analysis_data.get('key_insights', []):
@@ -135,6 +147,8 @@ def main():
     parser.add_argument("--analysis_dir", required=True, help="Directory to save the analysis markdown file.")
     parser.add_argument("--scenario_name", required=True, help="Name of the test scenario.")
     parser.add_argument("--test_run_id", required=True, help="Unique ID for the test run.")
+    parser.add_argument("--users", required=True, help="Number of concurrent users for the test.")
+    parser.add_argument("--run_time", required=True, help="Duration of the test.")
     parser.add_argument("--model", default="gpt-3.5-turbo", help="The OpenAI model to use for analysis.")
     args = parser.parse_args()
 
@@ -160,6 +174,8 @@ def main():
         test_results_context = {
             "scenario_name": args.scenario_name,
             "success": True, # Assuming the test itself ran successfully
+            "users": args.users,
+            "run_time": args.run_time,
             **summary_stats
         }
 

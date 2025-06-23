@@ -467,6 +467,8 @@ except Exception as e:
                                 --analysis_dir "${analysisDir}" ^
                                 --scenario_name "${env.SCRIPT_NAME}" ^
                                 --test_run_id "${TEST_RUN_ID}" ^
+                                --users "${params.USERS}" ^
+                                --run_time "${params.RUN_TIME}" ^
                                 --model "${params.LLM_MODEL}"
                         """
                     }

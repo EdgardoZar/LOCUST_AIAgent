@@ -73,10 +73,13 @@ class LLMAnalyzer:
         context = {
             "scenario_name": test_result.get("scenario_name", "Unknown"),
             "success": test_result.get("success", False),
-            "execution_time": test_result.get("execution_time", 0),
+            "users": test_result.get("users", "N/A"),
+            "run_time": test_result.get("run_time", "N/A"),
             "total_requests": test_result.get("total_requests", 0),
             "failed_requests": test_result.get("failed_requests", 0),
             "avg_response_time": test_result.get("avg_response_time", 0),
+            "p90_response_time": test_result.get("p90_response_time", 0),
+            "p95_response_time": test_result.get("p95_response_time", 0),
             "requests_per_sec": test_result.get("requests_per_sec", 0),
             "error_message": test_result.get("error_message", ""),
             "log_output": test_result.get("log_output", [])
@@ -128,29 +131,36 @@ class LLMAnalyzer:
     def _generate_analysis_prompt(self, context: Dict[str, Any]) -> str:
         """Generate analysis prompt for LLM."""
         prompt = f"""
-You are a performance testing expert analyzing the results of a Locust load test. Please provide a comprehensive analysis of the following test results:
+You are a performance testing expert analyzing the results of a Locust load test.
+The test was run with {context['users']} concurrent users for a duration of {context['run_time']}.
+
+Please provide a comprehensive analysis of the following test results:
 
 Test Scenario: {context['scenario_name']}
 Test Success: {context['success']}
-Execution Time: {context['execution_time']:.2f} seconds
 Total Requests: {context['total_requests']}
 Failed Requests: {context['failed_requests']}
-Average Response Time: {context['avg_response_time']:.2f} ms
 Requests per Second: {context['requests_per_sec']:.2f}
 
-Error Message: {context['error_message']}
+Response Time Metrics:
+- Average: {context['avg_response_time']:.2f} ms
+- 90th Percentile: {context['p90_response_time']:.2f} ms
+- 95th Percentile: {context['p95_response_time']:.2f} ms
 
 Please provide:
-1. A summary of the test results
-2. Performance assessment (Excellent/Good/Acceptable/Poor)
-3. Key insights about the system's performance
-4. Specific recommendations for improvement
-5. Any potential issues or concerns
-6. Business impact assessment
+1. A summary of the test results, explicitly mentioning it was run with {context['users']} users for {context['run_time']}.
+2. A response time table in a structured format.
+3. A performance assessment grade (Excellent/Good/Acceptable/Poor).
+4. Key insights, recommendations, potential issues, business impact, and next steps.
 
 Format your response as JSON with the following structure:
 {{
-    "summary": "Brief summary of test results",
+    "summary": "Brief summary of test results including users and duration.",
+    "response_time_table": [
+        {{"Metric": "Average Response Time", "Value": "{context['avg_response_time']:.2f} ms"}},
+        {{"Metric": "90th Percentile", "Value": "{context['p90_response_time']:.2f} ms"}},
+        {{"Metric": "95th Percentile", "Value": "{context['p95_response_time']:.2f} ms"}}
+    ],
     "performance_grade": "EXCELLENT|GOOD|ACCEPTABLE|POOR",
     "key_insights": ["insight1", "insight2", ...],
     "recommendations": ["recommendation1", "recommendation2", ...],
