@@ -326,59 +326,75 @@ class EnhancedScriptGenerator:
                 
             parts = expression[2:].split('.')
             current = data
+            i = 0
             
-            # Debug output
-            self.logger.info(f'JSONPath extraction: {expression}')
-            self.logger.info(f'Input data type: {type(data)}')
+            # Debug output - using print for immediate visibility
+            print(f'DEBUG: JSONPath extraction: {expression}')
+            print(f'DEBUG: Input data type: {type(data)}')
             if isinstance(data, dict):
-                self.logger.info(f'Available keys: {list(data.keys())}')
+                print(f'DEBUG: Available keys: {list(data.keys())}')
             elif isinstance(data, list):
-                self.logger.info(f'Array length: {len(data)}')
+                print(f'DEBUG: Array length: {len(data)}')
             
-            for i, part in enumerate(parts):
-                self.logger.info(f'Processing part {i+1}: {part}, current type: {type(current)}')
+            while i < len(parts):
+                part = parts[i]
+                print(f'DEBUG: Processing part {i+1}: {part}, current type: {type(current)}')
                 
                 if isinstance(current, dict):
-                    if part in current:
-                        current = current[part]
-                        self.logger.info(f'Found key {part}, new current type: {type(current)}')
+                    # Handle array wildcard in key, e.g., results[*]
+                    if part.endswith('[*]'):
+                        key = part[:-3]
+                        print(f'DEBUG: Array wildcard extraction for key: {key}')
+                        if key in current:
+                            current = current[key]
+                            print(f'DEBUG: Found array key {key}, array length: {len(current)}')
+                            if isinstance(current, list) and current:
+                                print(f'DEBUG: First item keys: {list(current[0].keys())}')
+                            # If there's another part, extract that property from each item
+                            if i + 1 < len(parts):
+                                next_part = parts[i + 1]
+                                print(f'DEBUG: Extracting property {next_part} from each array item')
+                                result = [item.get(next_part) for item in current if isinstance(item, dict) and next_part in item]
+                                print(f'DEBUG: Extracted {next_part} from {len(current)} items, got {len(result)} values')
+                                return result
+                            else:
+                                print(f'DEBUG: Returning entire array with {len(current)} items')
+                                return current
+                        else:
+                            print(f'DEBUG: Key {key} not found in dict. Available keys: {list(current.keys())}')
+                            return None
                     else:
-                        self.logger.warning(f'Key {part} not found in dict. Available keys: {list(current.keys())}')
-                        return None
+                        if part in current:
+                            current = current[part]
+                            print(f'DEBUG: Found key {part}, new current type: {type(current)}')
+                        else:
+                            print(f'DEBUG: Key {part} not found in dict. Available keys: {list(current.keys())}')
+                            return None
                 elif isinstance(current, list):
                     if part == '*':
                         # Wildcard - return the entire array
-                        self.logger.info(f'Wildcard found, returning array with {len(current)} items')
+                        print(f'DEBUG: Wildcard found, returning array with {len(current)} items')
                         return current
-                    elif part.endswith('[*]'):
-                        # Array wildcard with property extraction
-                        key = part[:-3]  # Remove [*] suffix
-                        if key in current[0] if current else False:
-                            # Extract the property from each item in the array
-                            result = [item.get(key) for item in current if isinstance(item, dict)]
-                            self.logger.info(f'Extracted {key} from {len(current)} items, got {len(result)} values')
-                            return result
-                        else:
-                            self.logger.warning(f'Property {key} not found in array items')
-                            return None
                     elif part.isdigit():
                         index = int(part)
                         if 0 <= index < len(current):
                             current = current[index]
-                            self.logger.info(f'Accessed index {index}, new current type: {type(current)}')
+                            print(f'DEBUG: Accessed index {index}, new current type: {type(current)}')
                         else:
-                            self.logger.warning(f'Index {index} out of range for array of length {len(current)}')
+                            print(f'DEBUG: Index {index} out of range for array of length {len(current)}')
                             return None
                     else:
-                        self.logger.warning(f'Invalid part {part} for array type')
+                        print(f'DEBUG: Invalid part {part} for array type')
                         return None
                 else:
-                    self.logger.warning(f'Cannot process part {part} on type {type(current)}')
+                    print(f'DEBUG: Cannot process part {part} on type {type(current)}')
                     return None
+                i += 1
                     
-            self.logger.info(f'Final result: {current}')
+            print(f'DEBUG: Final result: {current}')
             return current
         except Exception as e:
+            print(f'DEBUG: Error extracting JSONPath {expression}: {str(e)}')
             self.logger.error(f'Error extracting JSONPath {expression}: {{str(e)}}')
             return None
             
