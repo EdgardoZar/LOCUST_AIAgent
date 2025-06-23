@@ -1,0 +1,2 @@
+Method,Name,Error,Occurrences
+GET,/api/character/?page=6,CatchResponseError('Assertions failed: Should have at least 1 character in results: JSONPath expression returned None'),1
