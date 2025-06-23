@@ -262,14 +262,24 @@ class EnhancedScriptGenerator:
                     has_conditions = True
                 if min_val is not None:
                     code += f"""
-                if json_value < {min_val}:
-                    assertion_failures.append(f'{description}: value {{json_value}} is below minimum {min_val}')
+                # Handle min comparison - check length if it's a list, otherwise compare directly
+                if isinstance(json_value, list):
+                    if len(json_value) < {min_val}:
+                        assertion_failures.append(f'{description}: list has {{len(json_value)}} items, which is below minimum {min_val}')
+                else:
+                    if json_value < {min_val}:
+                        assertion_failures.append(f'{description}: value {{json_value}} is below minimum {min_val}')
 """
                     has_conditions = True
                 if max_val is not None:
                     code += f"""
-                if json_value > {max_val}:
-                    assertion_failures.append(f'{description}: value {{json_value}} exceeds maximum {max_val}')
+                # Handle max comparison - check length if it's a list, otherwise compare directly
+                if isinstance(json_value, list):
+                    if len(json_value) > {max_val}:
+                        assertion_failures.append(f'{description}: list has {{len(json_value)}} items, which exceeds maximum {max_val}')
+                else:
+                    if json_value > {max_val}:
+                        assertion_failures.append(f'{description}: value {{json_value}} exceeds maximum {max_val}')
 """
                     has_conditions = True
                 

@@ -346,8 +346,13 @@ class RickAndMortyApiTestUser(HttpUser):
                             json_value = self._extract_json_path(response.json(), '$.info.pages')
                             if json_value is not None:
 
-                                if json_value < 1:
-                                    assertion_failures.append(f'Should have at least 1 page: value {json_value} is below minimum 1')
+                                # Handle min comparison - check length if it's a list, otherwise compare directly
+                                if isinstance(json_value, list):
+                                    if len(json_value) < 1:
+                                        assertion_failures.append(f'Should have at least 1 page: list has {len(json_value)} items, which is below minimum 1')
+                                else:
+                                    if json_value < 1:
+                                        assertion_failures.append(f'Should have at least 1 page: value {json_value} is below minimum 1')
 
                             else:
                                 assertion_failures.append(f'Should have at least 1 page: JSONPath expression returned None')
@@ -359,8 +364,13 @@ class RickAndMortyApiTestUser(HttpUser):
                             json_value = self._extract_json_path(response.json(), '$.info.count')
                             if json_value is not None:
 
-                                if json_value < 1:
-                                    assertion_failures.append(f'Should have at least 1 character: value {json_value} is below minimum 1')
+                                # Handle min comparison - check length if it's a list, otherwise compare directly
+                                if isinstance(json_value, list):
+                                    if len(json_value) < 1:
+                                        assertion_failures.append(f'Should have at least 1 character: list has {len(json_value)} items, which is below minimum 1')
+                                else:
+                                    if json_value < 1:
+                                        assertion_failures.append(f'Should have at least 1 character: value {json_value} is below minimum 1')
 
                             else:
                                 assertion_failures.append(f'Should have at least 1 character: JSONPath expression returned None')
@@ -466,8 +476,13 @@ class RickAndMortyApiTestUser(HttpUser):
                             json_value = self._extract_json_path(response.json(), '$.results')
                             if json_value is not None:
 
-                                if json_value < 1:
-                                    assertion_failures.append(f'Should have at least 1 character in results: value {json_value} is below minimum 1')
+                                # Handle min comparison - check length if it's a list, otherwise compare directly
+                                if isinstance(json_value, list):
+                                    if len(json_value) < 1:
+                                        assertion_failures.append(f'Should have at least 1 character in results: list has {len(json_value)} items, which is below minimum 1')
+                                else:
+                                    if json_value < 1:
+                                        assertion_failures.append(f'Should have at least 1 character in results: value {json_value} is below minimum 1')
 
                             else:
                                 assertion_failures.append(f'Should have at least 1 character in results: JSONPath expression returned None')
@@ -583,8 +598,13 @@ class RickAndMortyApiTestUser(HttpUser):
                             json_value = self._extract_json_path(response.json(), '$.id')
                             if json_value is not None:
 
-                                if json_value < 1:
-                                    assertion_failures.append(f'Character should have a valid ID: value {json_value} is below minimum 1')
+                                # Handle min comparison - check length if it's a list, otherwise compare directly
+                                if isinstance(json_value, list):
+                                    if len(json_value) < 1:
+                                        assertion_failures.append(f'Character should have a valid ID: list has {len(json_value)} items, which is below minimum 1')
+                                else:
+                                    if json_value < 1:
+                                        assertion_failures.append(f'Character should have a valid ID: value {json_value} is below minimum 1')
 
                             else:
                                 assertion_failures.append(f'Character should have a valid ID: JSONPath expression returned None')
