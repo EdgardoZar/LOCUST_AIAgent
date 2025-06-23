@@ -1,0 +1,440 @@
+pipeline {
+    agent any
+    
+    parameters {
+        // Script generation parameters (only what's needed)
+        string(name: 'SCENARIO_NAME', defaultValue: '', description: 'Name of the test scenario')
+        text(name: 'SCENARIO_JSON', defaultValue: '', description: 'JSON configuration for the scenario')
+        string(name: 'TARGET_HOST', defaultValue: 'https://api.example.com', description: 'Target host URL for testing')
+        choice(name: 'ENVIRONMENT', choices: ['dev', 'staging', 'prod'], description: 'Target environment')
+        
+        // Git configuration
+        string(name: 'GIT_COMMIT_MESSAGE', defaultValue: '', description: 'Custom commit message (optional)')
+    }
+    
+    environment {
+        // Python and workspace configuration
+        PYTHON_VERSION = "${env.PYTHON_VERSION ?: '3.9'}"
+        WORKSPACE_DIR = "${WORKSPACE}\\test_workspace"
+        SCRIPTS_DIR = "${WORKSPACE}\\generated_scripts"
+        TIMESTAMP = "${new Date().format('yyyyMMdd_HHmmss')}"
+        
+        // Git configuration
+        GIT_EMAIL = "${env.JENKINS_GIT_EMAIL ?: 'jenkins@example.com'}"
+        GIT_USER = "${env.JENKINS_GIT_USER ?: 'Jenkins Pipeline'}"
+        
+        // Build information
+        BUILD_INFO = "Build #${env.BUILD_NUMBER} - ${env.BUILD_ID}"
+        JOB_NAME = "${env.JOB_NAME}"
+        BUILD_URL = "${env.BUILD_URL}"
+        
+        // Environment-specific settings
+        ENV_SUFFIX = "${params.ENVIRONMENT == 'prod' ? '' : '_' + params.ENVIRONMENT}"
+    }
+    
+    stages {
+        stage('Cleanup Workspace') {
+            steps {
+                script {
+                    echo "Cleaning up workspace to ensure fresh start..."
+                    
+                    // Remove any existing generated files and directories
+                    bat """
+                        if exist "${WORKSPACE_DIR}\\generate_script.py" del "${WORKSPACE_DIR}\\generate_script.py"
+                        if exist "${WORKSPACE_DIR}\\generate_script_*.py" del "${WORKSPACE_DIR}\\generate_script_*.py"
+                        if exist "${WORKSPACE_DIR}\\scenario_config.json" del "${WORKSPACE_DIR}\\scenario_config.json"
+                        if exist "${WORKSPACE_DIR}\\test_config.json" del "${WORKSPACE_DIR}\\test_config.json"
+                        if exist "${WORKSPACE_DIR}\\generation_metadata.json" del "${WORKSPACE_DIR}\\generation_metadata.json"
+                        if exist "${WORKSPACE_DIR}\\generated_scripts" rmdir /s /q "${WORKSPACE_DIR}\\generated_scripts"
+                        if exist "${WORKSPACE_DIR}\\generated_reports" rmdir /s /q "${WORKSPACE_DIR}\\generated_reports"
+                        
+                        REM Uncomment the next line if you want to force clean virtual environment installation
+                        REM if exist "venv" rmdir /s /q "venv"
+                    """
+                    
+                    echo "Workspace cleanup completed"
+                }
+            }
+        }
+        
+        stage('Checkout') {
+            steps {
+                script {
+                    // Get branch from SCM configuration to ensure we are not in a detached HEAD state
+                    def branchSpec = scm.branches[0].name
+                    def branchName = branchSpec.substring(branchSpec.lastIndexOf('/') + 1)
+                    
+                    checkout([
+                        $class: 'GitSCM',
+                        branches: [[name: branchName]],
+                        userRemoteConfigs: scm.userRemoteConfigs
+                    ])
+                    
+                    // Set env.BRANCH_NAME explicitly for later stages
+                    env.BRANCH_NAME = branchName
+                    
+                    echo "=== Script Generation Pipeline ==="
+                    echo "Build Number: ${env.BUILD_NUMBER}"
+                    echo "Job Name: ${env.JOB_NAME}"
+                    echo "Workspace: ${WORKSPACE}"
+                    echo "Branch: ${env.BRANCH_NAME}"
+                    echo "Scenario Name: ${params.SCENARIO_NAME}"
+                    echo "Environment: ${params.ENVIRONMENT}"
+                    echo "Target Host: ${params.TARGET_HOST}"
+                }
+            }
+        }
+        
+        stage('Setup Environment') {
+            steps {
+                script {
+                    echo "Setting up environment..."
+                    echo "Python Version: ${PYTHON_VERSION}"
+                    echo "Git Branch: ${env.BRANCH_NAME}"
+                    
+                    // Create directories
+                    bat "if not exist \"${WORKSPACE_DIR}\" mkdir \"${WORKSPACE_DIR}\""
+                    bat "if not exist \"${SCRIPTS_DIR}\" mkdir \"${SCRIPTS_DIR}\""
+                    
+                    // Setup Python virtual environment
+                    bat """
+                        if not exist venv (
+                            python -m venv venv
+                        )
+                        call venv\\Scripts\\activate.bat
+                        pip install --upgrade pip
+                        pip install -r requirements.txt
+                        pip install -e .
+                    """
+                }
+            }
+        }
+        
+        stage('Validate Input') {
+            steps {
+                script {
+                    echo "Validating input parameters..."
+                    
+                    if (!params.SCENARIO_NAME?.trim()) {
+                        error "SCENARIO_NAME is required"
+                    }
+                    if (!params.SCENARIO_JSON?.trim()) {
+                        error "SCENARIO_JSON is required"
+                    }
+                    
+                    // Store scenario info in environment without parsing JSON
+                    env.SCENARIO_NAME = params.SCENARIO_NAME
+                    env.SCENARIO_JSON = params.SCENARIO_JSON
+                    env.SCENARIO_STEPS_COUNT = "5" // Default, will be updated by Python
+                    env.SCENARIO_DESCRIPTION = "Validated by Python"
+                    
+                    echo "Input validation successful"
+                    echo "Scenario name: ${env.SCENARIO_NAME}"
+                    echo "JSON length: ${params.SCENARIO_JSON.length()} characters"
+                }
+            }
+        }
+        
+        stage('Generate Script') {
+            steps {
+                script {
+                    echo "Generating script from scenario configuration..."
+                    echo "Environment: ${params.ENVIRONMENT}"
+                    echo "Target Host: ${params.TARGET_HOST}"
+                    
+                    // Write scenario JSON to file directly
+                    writeFile file: "${WORKSPACE_DIR}\\scenario_config.json", text: params.SCENARIO_JSON
+                    
+                    // Create test configuration as JSON string
+                    def testConfigJson = groovy.json.JsonOutput.toJson([
+                        scenario_name: params.SCENARIO_NAME,
+                        host: params.TARGET_HOST,
+                        users: 10,  // Default value
+                        spawn_rate: 2,  // Default value
+                        run_time: "5m",  // Default value
+                        min_wait: 1000,  // Default value
+                        max_wait: 5000,  // Default value
+                        assertions: [
+                            [type: "status_code", value: 200]
+                        ],
+                        extract_variables: [:],
+                        headers: [
+                            "Content-Type": "application/json",
+                            "User-Agent": "Jenkins-Locust-AI-Agent/1.0"
+                        ],
+                        params: [:],
+                        body: [:],
+                        output_dir: "test_reports",  // Default value
+                        generate_csv: true,  // Default value
+                        generate_html: true,  // Default value
+                        log_level: "INFO"  // Default value
+                    ])
+                    
+                    writeFile file: "${WORKSPACE_DIR}\\test_config.json", text: testConfigJson
+                    
+                    // Create timestamped script filename to avoid caching issues
+                    def timestamp = System.currentTimeMillis()
+                    def scriptFilename = "generate_script_${env.BUILD_NUMBER}_${timestamp}.py"
+                    
+                    // Create the Python script content
+                    def pyScript = """
+import sys
+import json
+import os
+import subprocess
+import time
+import logging
+
+# DEBUG: This is the NEW self-contained script - Build ${env.BUILD_NUMBER}
+# If you see this message, the new script is running correctly
+
+print("DEBUG: NEW SCRIPT IS RUNNING - Build ${env.BUILD_NUMBER}")
+print(f"DEBUG: Workspace: {sys.argv[1] if len(sys.argv) > 1 else 'Not provided'}")
+print(f"DEBUG: Workspace dir: {sys.argv[2] if len(sys.argv) > 2 else 'Not provided'}")
+
+# Add the workspace to Python path
+workspace = sys.argv[1] if len(sys.argv) > 1 else os.getcwd()
+workspace_dir = sys.argv[2] if len(sys.argv) > 2 else os.path.join(workspace, "test_workspace")
+
+sys.path.insert(0, workspace)
+
+print("DEBUG: Starting script generation...")
+
+try:
+    from core.test_agent import LocustTestAgent, TestConfig
+    print("DEBUG: Successfully imported LocustTestAgent and TestConfig")
+    
+    # Load and validate scenario configuration
+    scenario_file = os.path.join(workspace_dir, "scenario_config.json")
+    print(f"DEBUG: Loading scenario from: {scenario_file}")
+    with open(scenario_file, "r") as f:
+        scenario_config = json.load(f)
+    
+    # Load test configuration
+    test_config_file = os.path.join(workspace_dir, "test_config.json")
+    print(f"DEBUG: Loading test config from: {test_config_file}")
+    with open(test_config_file, "r") as f:
+        test_config_data = json.load(f)
+    
+    # Validate scenario structure
+    if not scenario_config.get("name"):
+        raise ValueError("Scenario name is required")
+    if not scenario_config.get("steps"):
+        raise ValueError("Scenario steps are required")
+    
+    steps_count = len(scenario_config.get("steps", []))
+    description = scenario_config.get("description", "No description provided")
+    scenario_name = scenario_config["name"]
+    
+    print(f"Scenario: {scenario_name}")
+    print(f"Steps: {steps_count}")
+    print(f"Description: {description}")
+    
+    # Update test config to use scenario name from JSON
+    test_config_data["scenario_name"] = scenario_name
+    
+    test_config = TestConfig(**test_config_data)
+    agent = LocustTestAgent(workspace_dir=workspace_dir)
+    script_path = agent.generate_script(scenario_config, test_config)
+    
+    print(f"Script generated successfully: {script_path}")
+    
+    metadata = {
+        "script_path": script_path,
+        "scenario_name": scenario_name,
+        "steps_count": steps_count,
+        "description": description,
+        "success": True
+    }
+    
+    metadata_file = os.path.join(workspace_dir, "generation_metadata.json")
+    print(f"DEBUG: Writing metadata to: {metadata_file}")
+    with open(metadata_file, "w") as f:
+        json.dump(metadata, f, indent=2)
+        
+except ImportError as e:
+    print(f"DEBUG: Import error: {e}")
+    print("DEBUG: Available modules:", [m for m in sys.modules.keys() if 'locust' in m.lower()])
+    metadata = {
+        "success": False,
+        "error": f"Import error: {str(e)}"
+    }
+    metadata_file = os.path.join(workspace_dir, "generation_metadata.json")
+    with open(metadata_file, "w") as f:
+        json.dump(metadata, f, indent=2)
+    sys.exit(1)
+    
+except Exception as e:
+    print(f"Error: {str(e)}")
+    metadata = {
+        "success": False,
+        "error": str(e)
+    }
+    metadata_file = os.path.join(workspace_dir, "generation_metadata.json")
+    with open(metadata_file, "w") as f:
+        json.dump(metadata, f, indent=2)
+    sys.exit(1)
+"""
+                    writeFile file: "${WORKSPACE_DIR}\\${scriptFilename}", text: pyScript
+                    
+                    echo "DEBUG: Written script file: ${WORKSPACE_DIR}\\${scriptFilename}"
+                    echo "DEBUG: Script content preview (first 200 chars): ${pyScript.take(200)}"
+                    
+                    // Run the Python script directly without package installation
+                    bat """
+                        call venv\\Scripts\\activate.bat
+                        cd ${WORKSPACE}
+                        set PYTHONPATH=%PYTHONPATH%;%CD%
+                        echo DEBUG: About to run: python ${WORKSPACE_DIR}\\${scriptFilename} "${WORKSPACE}" "${WORKSPACE_DIR}"
+                        python ${WORKSPACE_DIR}\\${scriptFilename} "${WORKSPACE}" "${WORKSPACE_DIR}"
+                    """
+                    
+                    // Read generation metadata
+                    def metadataText = readFile file: "${WORKSPACE_DIR}\\generation_metadata.json"
+                    def metadata = new groovy.json.JsonSlurper().parseText(metadataText)
+                    
+                    if (metadata.success) {
+                        env.GENERATED_SCRIPT = metadata.script_path
+                        env.SCENARIO_STEPS_COUNT = metadata.steps_count.toString()
+                        env.SCENARIO_DESCRIPTION = metadata.description
+                        echo "Generated script: ${env.GENERATED_SCRIPT}"
+                        echo "Script generation completed successfully!"
+                    } else {
+                        error "Script generation failed: ${metadata.error}"
+                    }
+                }
+            }
+        }
+        
+        stage('Archive Script') {
+            steps {
+                script {
+                    // Archive the generated script from test_workspace
+                    archiveArtifacts artifacts: "test_workspace\\generated_scripts\\*.py", fingerprint: true
+                    echo "Script archived successfully: ${env.GENERATED_SCRIPT}"
+                }
+            }
+        }
+        
+        stage('Commit to Git') {
+            steps {
+                script {
+                    def branchName = env.BRANCH_NAME
+                    if (!branchName) {
+                        error "Could not determine branch name. Aborting git commit."
+                    }
+                    echo "Committing generated script to Git repository..."
+                    echo "Branch: ${branchName}"
+                    echo "Script: ${env.GENERATED_SCRIPT}"
+                    echo "DEBUG: Committing to ${branchName} branch"
+                    
+                    // Define commit message outside credentials block
+                    def commitMessage = params.GIT_COMMIT_MESSAGE ?: "Generated script: ${params.SCENARIO_NAME} - ${TIMESTAMP} - ${BUILD_INFO}"
+                    
+                    // Configure Git with credentials
+                    withCredentials([usernamePassword(credentialsId: 'github-credentials', usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD')]) {
+                        bat """
+                            echo DEBUG: Configuring Git with credentials
+                            git config user.email "${GIT_USERNAME}@users.noreply.github.com"
+                            git config user.name "${GIT_USERNAME}"
+                            echo DEBUG: Git config completed
+                        """
+                        
+                        // Check current branch and status
+                        bat """
+                            echo DEBUG: Current branch:
+                            git branch
+                            echo DEBUG: Current status:
+                            git status
+                            echo DEBUG: Getting current branch name:
+                            git rev-parse --abbrev-ref HEAD
+                        """
+                        
+                        // Ensure we're on the correct branch and pull latest changes
+                        bat """
+                            echo DEBUG: Current branch is now ${branchName}
+                            git checkout ${branchName}
+                            echo DEBUG: Pulling latest changes from remote ${branchName}
+                            git pull https://%GIT_USERNAME%:%GIT_PASSWORD%@github.com/EdgardoZar/LOCUST_AIAgent.git ${branchName}
+                            echo DEBUG: Pull completed
+                        """
+                        
+                        // Copy generated script to a permanent location in the repository
+                        bat """
+                            echo DEBUG: Copying script to generated_scripts folder
+                            if not exist "generated_scripts" mkdir "generated_scripts"
+                            copy "${env.GENERATED_SCRIPT}" "generated_scripts\\"
+                            echo DEBUG: Script copy completed
+                        """
+                        
+                        // Add and commit the script
+                        bat """
+                            echo DEBUG: Adding files to Git
+                            git add generated_scripts\\*.py
+                            echo DEBUG: Files added, checking status
+                            git status
+                            echo DEBUG: Attempting commit
+                            git diff --cached --quiet && echo "No changes to commit - script is identical" || git commit -m "${commitMessage}"
+                            echo DEBUG: Commit completed
+                        """
+                        
+                        // Push to the correct branch with credentials
+                        bat """
+                            echo DEBUG: Pushing to ${branchName} branch with credentials
+                            echo DEBUG: Checking Git remote configuration
+                            git remote -v
+                            echo DEBUG: Attempting push with authenticated user
+                            git push https://%GIT_USERNAME%:%GIT_PASSWORD%@github.com/EdgardoZar/LOCUST_AIAgent.git ${branchName}
+                            if %ERRORLEVEL% NEQ 0 (
+                                echo DEBUG: Push failed with error code %ERRORLEVEL%
+                                echo DEBUG: This might be due to authentication or network issues
+                            ) else (
+                                echo DEBUG: Push completed successfully
+                            )
+                            echo DEBUG: Push operation finished
+                        """
+                    }
+                    
+                    echo "Script committed to ${branchName} branch successfully"
+                    echo "Commit message: ${commitMessage}"
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            script {
+                echo "=== Script Generation Pipeline Summary ==="
+                echo "Build Number: ${env.BUILD_NUMBER}"
+                echo "Job Name: ${env.JOB_NAME}"
+                echo "Result: ${currentBuild.result}"
+                echo "Build URL: ${env.BUILD_URL}"
+                echo "Generated Script: ${env.GENERATED_SCRIPT}"
+                echo "Branch: ${env.BRANCH_NAME}"
+                echo "Environment: ${params.ENVIRONMENT}"
+                echo "Scenario Steps: ${env.SCENARIO_STEPS_COUNT}"
+            }
+        }
+        
+        success {
+            script {
+                echo "✅ Script generated successfully!"
+                echo "📁 Script: ${env.GENERATED_SCRIPT}"
+                echo "📦 Script archived and ready for download"
+                echo "🌿 Script committed to ${env.BRANCH_NAME} branch"
+                echo "🔗 You can now use this script in the Test Execution Pipeline"
+            }
+        }
+        
+        failure {
+            echo "❌ Script generation failed!"
+            echo "📋 Check the console output for error details"
+            echo "🔧 Verify your JSON format and parameters"
+        }
+        
+        unstable {
+            echo "⚠️ Script generation completed with warnings"
+        }
+    }
+} 

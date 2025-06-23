@@ -1,0 +1,107 @@
+{
+  "name": "Rick and Morty API Test",
+  "description": "Test scenario for Rick and Morty API endpoints",
+  "min_wait": 1000,
+  "max_wait": 5000,
+  "steps": [
+    {
+      "id": 1,
+      "type": "api_call",
+      "config": {
+        "name": "Get Characters",
+        "method": "GET",
+        "url": "/api/character",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "params": {
+          "page": "1"
+        },
+        "body": null,
+        "extract": {
+          "total_pages": "$.info.pages",
+          "total_count": "$.info.count"
+        },
+        "assertions": [
+          {
+            "type": "status_code",
+            "value": 200
+          },
+          {
+            "type": "json_path",
+            "path": "$.info.count",
+            "value": "826"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "type": "wait",
+      "config": {
+        "wait": 1
+      }
+    },
+    {
+      "id": 3,
+      "type": "api_call",
+      "config": {
+        "name": "Get Character by ID",
+        "method": "GET",
+        "url": "/api/character/1",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "params": {},
+        "body": null,
+        "extract": {
+          "character_name": "$.name",
+          "character_status": "$.status"
+        },
+        "assertions": [
+          {
+            "type": "status_code",
+            "value": 200
+          },
+          {
+            "type": "json_path",
+            "path": "$.name",
+            "value": "Rick Sanchez"
+          }
+        ]
+      }
+    },
+    {
+      "id": 4,
+      "type": "wait",
+      "config": {
+        "wait": 0.5
+      }
+    },
+    {
+      "id": 5,
+      "type": "api_call",
+      "config": {
+        "name": "Search Characters",
+        "method": "GET",
+        "url": "/api/character",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "params": {
+          "name": "rick"
+        },
+        "body": null,
+        "extract": {
+          "search_results": "$.results"
+        },
+        "assertions": [
+          {
+            "type": "status_code",
+            "value": 200
+          }
+        ]
+      }
+    }
+  ]
+} 

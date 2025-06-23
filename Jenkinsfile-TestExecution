@@ -1,0 +1,717 @@
+pipeline {
+    agent any
+    
+    parameters {
+        // Test execution parameters will be selected during the build
+        string(name: 'TARGET_HOST', defaultValue: 'https://rickandmortyapi.com', description: 'Target host URL for testing')
+        string(name: 'API_TOKEN', defaultValue: '', description: 'API token for authentication (optional)')
+        choice(name: 'ENVIRONMENT', choices: ['dev', 'staging', 'prod'], description: 'Target environment')
+        
+        // Test configuration
+        string(name: 'USERS', defaultValue: '10', description: 'Number of concurrent users')
+        
+        // Test configuration
+        string(name: 'SPAWN_RATE', defaultValue: '2', description: 'User spawn rate per second')
+        string(name: 'RUN_TIME', defaultValue: '5m', description: 'Test duration (e.g., 5m, 10m, 1h)')
+        string(name: 'MIN_WAIT', defaultValue: '1000', description: 'Minimum wait time between requests (ms)')
+        string(name: 'MAX_WAIT', defaultValue: '5000', description: 'Maximum wait time between requests (ms)')
+        
+        // Advanced options
+        booleanParam(name: 'USE_LLM_ANALYSIS', defaultValue: false, description: 'Enable LLM-powered analysis')
+        choice(name: 'LLM_MODEL', choices: ['gpt-3.5-turbo', 'gpt-4', 'gpt-4-turbo-preview'], description: 'AI model for analysis')
+        booleanParam(name: 'GENERATE_HTML_REPORT', defaultValue: true, description: 'Generate HTML test report')
+        booleanParam(name: 'GENERATE_CSV_REPORT', defaultValue: true, description: 'Generate CSV test report')
+        string(name: 'LOG_LEVEL', defaultValue: 'INFO', description: 'Logging level (DEBUG, INFO, WARNING, ERROR)')
+        
+        // Performance thresholds
+        string(name: 'MAX_AVG_RESPONSE_TIME', defaultValue: '2000', description: 'Maximum average response time (ms)')
+        string(name: 'MIN_SUCCESS_RATE', defaultValue: '95', description: 'Minimum success rate percentage')
+        string(name: 'MIN_REQUESTS_PER_SEC', defaultValue: '10', description: 'Minimum requests per second')
+        
+        // Test metadata
+        string(name: 'TEST_DESCRIPTION', defaultValue: '', description: 'Description of this test run (optional)')
+        string(name: 'TEST_TAGS', defaultValue: '', description: 'Tags for this test run (optional)')
+    }
+    
+    environment {
+        // Python and workspace configuration
+        PYTHON_VERSION = "${env.PYTHON_VERSION ?: '3.9'}"
+        WORKSPACE_DIR = "${WORKSPACE}\\test_workspace"
+        REPORTS_DIR = "${WORKSPACE}\\generated_reports"
+        SCRIPTS_DIR = "${WORKSPACE}\\generated_scripts"
+        TIMESTAMP = "${new Date().format('yyyyMMdd_HHmmss')}"
+        
+        // Git settings
+        GIT_EMAIL = "jenkins@example.com"
+        GIT_USER = "Jenkins Pipeline"
+        
+        // Build information
+        BUILD_INFO = "Build #${env.BUILD_NUMBER} - ${env.BUILD_ID}"
+        JOB_NAME = "${env.JOB_NAME}"
+        BUILD_URL = "${env.BUILD_URL}"
+        
+        // Test execution settings
+        TEST_RUN_ID = "${env.BUILD_NUMBER}_${TIMESTAMP}"
+        TEST_ENVIRONMENT = "${params.ENVIRONMENT}"
+        
+        // Performance thresholds (convert to integers)
+        MAX_RESPONSE_TIME_MS = "${params.MAX_AVG_RESPONSE_TIME}"
+        MIN_SUCCESS_RATE_PCT = "${params.MIN_SUCCESS_RATE}"
+        MIN_REQUESTS_PER_SEC = "${params.MIN_REQUESTS_PER_SEC}"
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout([$class: 'GitSCM', 
+                    branches: [[name: '*/dev']], 
+                    doGenerateSubmoduleConfigurations: false, 
+                    extensions: [], 
+                    submoduleCfg: [], 
+                    userRemoteConfigs: [[
+                        credentialsId: 'github-credentials',
+                        url: 'https://github.com/EdgardoZar/LOCUST_AIAgent.git'
+                    ]]
+                ])
+                script {
+                    echo "=== Test Execution Pipeline ==="
+                    echo "Build Number: ${env.BUILD_NUMBER}"
+                    echo "Job Name: ${env.JOB_NAME}"
+                    echo "Workspace: ${WORKSPACE}"
+                    echo "Branch: dev"
+                    echo "Current Branch: ${env.BRANCH_NAME}"
+                    echo "Test Run ID: ${TEST_RUN_ID}"
+                    echo "Environment: ${TEST_ENVIRONMENT}"
+                    echo "Target Host: ${params.TARGET_HOST}"
+                }
+            }
+        }
+        
+        stage('Setup Environment') {
+            steps {
+                script {
+                    echo "Setting up test environment..."
+                    echo "Python Version: ${PYTHON_VERSION}"
+                    echo "Test Run ID: ${TEST_RUN_ID}"
+                    echo "Performance Thresholds:"
+                    echo "  Max Response Time: ${MAX_RESPONSE_TIME_MS}ms"
+                    echo "  Min Success Rate: ${MIN_SUCCESS_RATE_PCT}%"
+                    echo "  Min Requests/sec: ${MIN_REQUESTS_PER_SEC}"
+                    
+                    // Create directories
+                    bat "if not exist \"${WORKSPACE_DIR}\" mkdir \"${WORKSPACE_DIR}\""
+                    bat "if not exist \"${REPORTS_DIR}\" mkdir \"${REPORTS_DIR}\""
+                    bat "if not exist \"${SCRIPTS_DIR}\" mkdir \"${SCRIPTS_DIR}\""
+                    
+                    // Setup Python virtual environment
+                    bat """
+                        if not exist venv (
+                            python -m venv venv
+                        )
+                        call venv\\Scripts\\activate.bat
+                        pip install --upgrade pip
+                        pip install -r requirements.txt
+                        pip install -e .
+                    """
+                }
+            }
+        }
+        
+        stage('Select Script') {
+            steps {
+                script {
+                    echo "🔍 Finding available scripts..."
+                    
+                    // Use a more robust method to get script files
+                    def scriptFiles = ""
+                    try {
+                        def dirOutput = bat(script: "dir \"${SCRIPTS_DIR}\\*.py\" /b", returnStdout: true).trim()
+                        if (dirOutput && !dirOutput.contains("File Not Found") && !dirOutput.isEmpty()) {
+                            scriptFiles = dirOutput
+                        }
+                    } catch (Exception e) {
+                        error "Could not list scripts: ${e.getMessage()}"
+                    }
+                    
+                    if (!scriptFiles) {
+                        error "❌ No scripts found in ${SCRIPTS_DIR}. Please run the Script Generation Pipeline first."
+                    }
+                    
+                    def scriptList = scriptFiles.tokenize('\n').collect { it.trim() }
+                    echo "✅ Found scripts: ${scriptList}"
+
+                    // Now, ask the user to choose using an input step
+                    def userInput = input(
+                        id: 'scriptSelection',
+                        message: 'Please select the test script to run',
+                        parameters: [
+                            choice(
+                                name: 'SELECTED_SCRIPT',
+                                choices: scriptList,
+                                description: 'Choose a script from the list of available scripts.'
+                            )
+                        ]
+                    )
+                    
+                    echo "🎯 User selected script: ${userInput}"
+                    env.SELECTED_SCRIPT = userInput
+                }
+            }
+        }
+        
+        stage('Validate Script') {
+            steps {
+                script {
+                    echo "Validating selected script: ${env.SELECTED_SCRIPT}"
+                    
+                    // Check if a valid script was selected
+                    if (env.SELECTED_SCRIPT == null || env.SELECTED_SCRIPT.isEmpty()) {
+                        error "No script was selected. Aborting."
+                    }
+                    
+                    // Check if script exists
+                    def scriptExists = fileExists "${SCRIPTS_DIR}\\${env.SELECTED_SCRIPT}"
+                    if (!scriptExists) {
+                        error "Script '${env.SELECTED_SCRIPT}' not found. It might have been deleted from the repository. Please try running the build again."
+                    }
+                    
+                    // Store script info in environment
+                    env.SCRIPT_NAME = env.SELECTED_SCRIPT.replace('.py', '')
+                    env.SCRIPT_PATH = "${SCRIPTS_DIR}\\${env.SELECTED_SCRIPT}"
+                    
+                    echo "Script validation successful"
+                    echo "Script Name: ${env.SCRIPT_NAME}"
+                    echo "Script Path: ${env.SCRIPT_PATH}"
+                }
+            }
+        }
+        
+        stage('Run Test') {
+            steps {
+                script {
+                    echo "Running test with script: ${env.SELECTED_SCRIPT}"
+                    echo "Test Run ID: ${TEST_RUN_ID}"
+                    echo "Environment: ${TEST_ENVIRONMENT}"
+                    echo "Target Host: ${params.TARGET_HOST}"
+                    echo "Users: ${params.USERS}"
+                    echo "Run Time: ${params.RUN_TIME}"
+                    
+                    // Create test configuration
+                    def testConfig = [
+                        scenario_name: env.SCRIPT_NAME,
+                        host: params.TARGET_HOST,
+                        users: params.USERS,
+                        spawn_rate: params.SPAWN_RATE,
+                        run_time: params.RUN_TIME,
+                        min_wait: params.MIN_WAIT,
+                        max_wait: params.MAX_WAIT,
+                        assertions: [
+                            [type: "status_code", value: 200]
+                        ],
+                        extract_variables: [:],
+                        headers: [
+                            "Content-Type": "application/json",
+                            "User-Agent": "Jenkins-Locust-AI-Agent/1.0"
+                        ],
+                        params: [:],
+                        body: [:],
+                        output_dir: REPORTS_DIR,
+                        generate_csv: params.GENERATE_CSV_REPORT,
+                        generate_html: params.GENERATE_HTML_REPORT,
+                        log_level: params.LOG_LEVEL
+                    ]
+                    
+                    writeFile file: "${WORKSPACE_DIR}\\test_config.json", text: groovy.json.JsonOutput.toJson(testConfig)
+                    
+                    // Script is already available in generated_scripts folder on main branch
+                    echo "Using script: ${SCRIPTS_DIR}\\${env.SELECTED_SCRIPT}"
+                    
+                    // Write the Python script to a file
+                    def executeTestScript = """
+import sys
+import os
+
+# Add the workspace to Python path
+workspace = r"${WORKSPACE}"
+sys.path.insert(0, workspace)
+sys.path.insert(0, os.path.join(workspace, "core"))
+sys.path.insert(0, os.path.join(workspace, "analysis"))
+sys.path.insert(0, os.path.join(workspace, "utils"))
+
+print(f"DEBUG: Python path: {sys.path}")
+print(f"DEBUG: Current working directory: {os.getcwd()}")
+print(f"DEBUG: Workspace: {workspace}")
+
+try:
+    from core.test_agent import LocustTestAgent, TestConfig
+    print("DEBUG: Successfully imported LocustTestAgent and TestConfig")
+except ImportError as e:
+    print(f"DEBUG: Import error: {e}")
+    print("DEBUG: Available modules:", [m for m in sys.modules.keys() if 'locust' in m.lower()])
+    sys.exit(1)
+
+import json
+
+# Load test config
+with open(r"${WORKSPACE_DIR}\\test_config.json", "r") as f:
+    test_config_data = json.load(f)
+
+# Create test config
+test_config = TestConfig(**test_config_data)
+
+# Run test
+agent = LocustTestAgent(workspace_dir=r"${WORKSPACE_DIR}")
+script_path = r"${SCRIPTS_DIR}\\${env.SELECTED_SCRIPT}"
+result = agent.execute_test(script_path, test_config)
+
+# Save results
+workflow_result = {
+    "workflow_success": result.success,
+    "scenario_name": result.scenario_name,
+    "script_path": result.script_path,
+    "html_report_path": result.html_report_path,
+    "csv_report_path": result.csv_report_path,
+    "test_metadata": {
+        "test_run_id": "${TEST_RUN_ID}",
+        "environment": "${TEST_ENVIRONMENT}",
+        "build_number": "${env.BUILD_NUMBER}",
+        "job_name": "${env.JOB_NAME}",
+        "description": "${params.TEST_DESCRIPTION}",
+        "tags": "${params.TEST_TAGS}"
+    },
+    "test_result": {
+        "execution_time": result.execution_time,
+        "total_requests": result.total_requests,
+        "failed_requests": result.failed_requests,
+        "avg_response_time": result.avg_response_time,
+        "requests_per_sec": result.requests_per_sec
+    }
+}
+
+with open(r"${WORKSPACE_DIR}\\test_results.json", "w") as f:
+    json.dump(workflow_result, f, indent=2)
+
+print(f"Test completed: Success={result.success}")
+"""
+                    writeFile file: "${WORKSPACE_DIR}\\execute_test.py", text: executeTestScript
+                    
+                    bat """
+                        call venv\\Scripts\\activate.bat
+                        cd ${WORKSPACE}
+                        set PYTHONPATH=%PYTHONPATH%;${WORKSPACE};${WORKSPACE}\\core;${WORKSPACE}\\analysis;${WORKSPACE}\\utils
+                        echo DEBUG: PYTHONPATH=%PYTHONPATH%
+                        echo DEBUG: About to run: python ${WORKSPACE_DIR}\\execute_test.py
+                        python ${WORKSPACE_DIR}\\execute_test.py
+                    """
+                    
+                    // Store test results in environment
+                    def resultsText = readFile file: "${WORKSPACE_DIR}\\test_results.json"
+                    
+                    // Parse results using Python to avoid serialization issues
+                    def processResultsScript = """
+import sys
+import json
+import os
+
+try:
+    # Load test results
+    with open(r"${WORKSPACE_DIR}\\test_results.json", "r") as f:
+        results = json.load(f)
+    
+    # Extract and validate data
+    workflow_success = results.get("workflow_success", False)
+    scenario_name = results.get("scenario_name", "Unknown")
+    script_path = results.get("script_path", "Unknown")
+    
+    test_result = results.get("test_result", {})
+    total_requests = test_result.get("total_requests", 0)
+    failed_requests = test_result.get("failed_requests", 0)
+    avg_response_time = test_result.get("avg_response_time", 0)
+    requests_per_sec = test_result.get("requests_per_sec", 0)
+    execution_time = test_result.get("execution_time", 0)
+    html_report_path = test_result.get("html_report_path", "")
+    csv_report_path = test_result.get("csv_report_path", "")
+    
+    llm_analysis = results.get("llm_analysis", {})
+    performance_grade = llm_analysis.get("performance_grade", "N/A")
+    summary = llm_analysis.get("summary", "N/A")
+    key_insights = llm_analysis.get("key_insights", [])
+    recommendations = llm_analysis.get("recommendations", [])
+    
+    # Create metadata for Jenkins
+    metadata = {
+        "workflow_success": workflow_success,
+        "scenario_name": scenario_name,
+        "script_path": script_path,
+        "test_result": {
+            "execution_time": execution_time,
+            "total_requests": total_requests,
+            "failed_requests": failed_requests,
+            "avg_response_time": avg_response_time,
+            "requests_per_sec": requests_per_sec
+        },
+        "llm_analysis": {
+            "performance_grade": performance_grade,
+            "summary": summary,
+            "key_insights": key_insights,
+            "recommendations": recommendations
+        },
+        "success": True
+    }
+    
+    with open(r"${WORKSPACE_DIR}\\test_metadata.json", "w") as f:
+        json.dump(metadata, f, indent=2)
+    
+    print(f"Test results processed successfully")
+    print(f"Success: {workflow_success}")
+    print(f"Total Requests: {total_requests}")
+    print(f"Failed Requests: {failed_requests}")
+    print(f"Avg Response Time: {avg_response_time}ms")
+    print(f"Requests/sec: {requests_per_sec}")
+    
+except Exception as e:
+    print(f"Error processing test results: {str(e)}")
+    metadata = {
+        "success": False,
+        "error": str(e)
+    }
+    with open(r"${WORKSPACE_DIR}\\test_metadata.json", "w") as f:
+        json.dump(metadata, f, indent=2)
+    sys.exit(1)
+"""
+                    writeFile file: "${WORKSPACE_DIR}\\process_results.py", text: processResultsScript
+                    
+                    // Parse results using Python to avoid serialization issues
+                    bat """
+                        call venv\\Scripts\\activate.bat
+                        cd ${WORKSPACE}
+                        set PYTHONPATH=%PYTHONPATH%;${WORKSPACE}
+                        python ${WORKSPACE_DIR}\\process_results.py
+                    """
+                    
+                    // Read test metadata
+                    def metadataText = readFile file: "${WORKSPACE_DIR}\\test_metadata.json"
+                    def metadata = new groovy.json.JsonSlurper().parseText(metadataText)
+                    
+                    if (metadata.success) {
+                        env.TEST_SUCCESS = metadata.workflow_success.toString()
+                        env.TOTAL_REQUESTS = metadata.test_result.total_requests.toString()
+                        env.FAILED_REQUESTS = metadata.test_result.failed_requests.toString()
+                        env.AVG_RESPONSE_TIME = metadata.test_result.avg_response_time.toString()
+                        env.REQUESTS_PER_SEC = metadata.test_result.requests_per_sec.toString()
+                        env.EXECUTION_TIME = metadata.test_result.execution_time.toString()
+                        
+                        echo "Test execution completed"
+                        echo "Success: ${env.TEST_SUCCESS}"
+                        echo "Total Requests: ${env.TOTAL_REQUESTS}"
+                        echo "Failed Requests: ${env.FAILED_REQUESTS}"
+                        echo "Avg Response Time: ${env.AVG_RESPONSE_TIME}ms"
+                        echo "Requests/sec: ${env.REQUESTS_PER_SEC}"
+                    } else {
+                        error "Failed to process test results: ${metadata.error}"
+                    }
+                }
+            }
+        }
+        
+        stage('Check Test Success') {
+            steps {
+                script {
+                    echo "🔍 Checking test execution success..."
+                    
+                    if (env.TEST_SUCCESS == 'False') {
+                        echo "❌ Test execution failed! Stopping pipeline."
+                        echo "📋 Test Results Summary:"
+                        echo "  Success: ${env.TEST_SUCCESS}"
+                        echo "  Total Requests: ${env.TOTAL_REQUESTS}"
+                        echo "  Failed Requests: ${env.FAILED_REQUESTS}"
+                        echo "  Avg Response Time: ${env.AVG_RESPONSE_TIME}ms"
+                        echo "  Requests/sec: ${env.REQUESTS_PER_SEC}"
+                        echo ""
+                        echo "🚫 Pipeline stopped due to test failure."
+                        echo "💡 Check the script for syntax errors or API issues."
+                        currentBuild.result = 'FAILURE'
+                        error "Test execution failed - stopping pipeline"
+                    } else {
+                        echo "✅ Test execution successful! Continuing with pipeline."
+                        echo "📊 Test Results:"
+                        echo "  Success: ${env.TEST_SUCCESS}"
+                        echo "  Total Requests: ${env.TOTAL_REQUESTS}"
+                        echo "  Failed Requests: ${env.FAILED_REQUESTS}"
+                        echo "  Avg Response Time: ${env.AVG_RESPONSE_TIME}ms"
+                        echo "  Requests/sec: ${env.REQUESTS_PER_SEC}"
+                    }
+                }
+            }
+        }
+        
+        stage('Commit Reports to Git') {
+            steps {
+                script {
+                    withCredentials([usernamePassword(credentialsId: 'github-credentials', usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD')]) {
+                        bat """
+                            echo DEBUG: Configuring Git...
+                            git config user.email "${GIT_EMAIL}"
+                            git config user.name "${GIT_USER}"
+                            
+                            echo DEBUG: Ensuring we're on dev branch...
+                            git checkout dev
+                            
+                            echo DEBUG: Pulling latest changes...
+                            git pull https://%GIT_USERNAME%:%GIT_PASSWORD%@github.com/EdgardoZar/LOCUST_AIAgent.git dev
+                        """
+                        
+                        def commitMessage = "Feat: Add test reports for build #${env.BUILD_NUMBER}"
+                        bat """
+                            echo DEBUG: Adding reports to Git...
+                            git add "${REPORTS_DIR}"
+                            
+                            echo DEBUG: Committing reports...
+                            git diff --cached --quiet && echo "No new reports to commit" || git commit -m "${commitMessage}"
+                            
+                            echo DEBUG: Pushing reports to Git...
+                            git push https://%GIT_USERNAME%:%GIT_PASSWORD%@github.com/EdgardoZar/LOCUST_AIAgent.git dev || echo "Push failed - reports may already exist"
+                        """
+                        
+                        echo "Reports committed to dev branch successfully."
+                    }
+                }
+            }
+        }
+        
+        stage('LLM Analysis') {
+            when {
+                expression { params.USE_LLM_ANALYSIS == true }
+            }
+            steps {
+                script {
+                    echo "🤖 Starting LLM Analysis using model: ${params.LLM_MODEL}"
+                    
+                    def analysisDir = "${WORKSPACE}\\generated_analysis"
+                    bat "if not exist \"${analysisDir}\" mkdir \"${analysisDir}\""
+                    
+                    withCredentials([string(credentialsId: 'openai-api-key', variable: 'OPENAI_API_KEY')]) {
+                        bat """
+                            call venv\\Scripts\\activate.bat
+                            python analysis/run_llm_analysis.py ^
+                                --reports_dir "${REPORTS_DIR}" ^
+                                --analysis_dir "${analysisDir}" ^
+                                --scenario_name "${env.SCRIPT_NAME}" ^
+                                --test_run_id "${TEST_RUN_ID}" ^
+                                --users "${params.USERS}" ^
+                                --run_time "${params.RUN_TIME}" ^
+                                --model "${params.LLM_MODEL}"
+                        """
+                    }
+                    
+                    archiveArtifacts artifacts: "generated_analysis/*.md", fingerprint: true
+                    echo "✅ LLM Analysis report archived."
+                    
+                    withCredentials([usernamePassword(credentialsId: 'github-credentials', usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD')]) {
+                        def commitMessage = "feat(analysis): Add LLM analysis for ${env.SCRIPT_NAME} - Build #${env.BUILD_NUMBER}"
+                        bat """
+                            git config user.email "${GIT_USERNAME}@users.noreply.github.com"
+                            git config user.name "${GIT_USERNAME}"
+                            git add "${analysisDir}"
+                            git diff --cached --quiet && echo "No new analysis to commit" || git commit -m "${commitMessage}"
+                            git push https://%GIT_USERNAME%:%GIT_PASSWORD%@github.com/EdgardoZar/LOCUST_AIAgent.git dev
+                        """
+                    }
+                    echo "✅ LLM Analysis committed to Git."
+                }
+            }
+        }
+        
+        stage('Analyze Results') {
+            when {
+                expression { fileExists "${WORKSPACE_DIR}/test_results.json" }
+            }
+            steps {
+                script {
+                    echo "Analyzing test results..."
+                    echo "Performance Thresholds:"
+                    echo "  Max Response Time: ${params.MAX_AVG_RESPONSE_TIME}ms"
+                    echo "  Min Success Rate: ${params.MIN_SUCCESS_RATE}%"
+                    echo "  Min Requests/sec: ${params.MIN_REQUESTS_PER_SEC}"
+                    
+                    def resultsText = readFile file: "${WORKSPACE_DIR}/test_results.json"
+                    def results = new groovy.json.JsonSlurper().parseText(resultsText)
+                    
+                    def testResult = results.test_result
+                    def totalRequests = testResult.total_requests as int
+                    def failedRequests = testResult.failed_requests as int
+                    def avgResponseTime = testResult.avg_response_time as double
+                    def requestsPerSec = testResult.requests_per_sec as double
+                    
+                    def successRate = (totalRequests > 0) ? (((totalRequests - failedRequests) * 100.0) / totalRequests) : 0.0
+                    
+                    echo "Test Results Analysis:"
+                    echo "  Success: ${results.workflow_success}"
+                    echo "  Scenario: ${results.scenario_name}"
+                    echo "  Script: ${results.script_path.split('\\\\').last()}"
+                    echo "  Test Run ID: ${results.test_metadata.test_run_id}"
+                    echo "  Execution Time: ${testResult.execution_time}s"
+                    echo "  Total Requests: ${totalRequests}"
+                    echo "  Failed Requests: ${failedRequests}"
+                    echo "  Avg Response Time: ${avgResponseTime}ms"
+                    echo "  Requests/sec: ${requestsPerSec}"
+                    echo "  Success Rate: ${String.format('%.2f', successRate)}%"
+                    
+                    def performanceIssues = []
+                    if (avgResponseTime > (params.MAX_AVG_RESPONSE_TIME as double)) {
+                        performanceIssues.add("Average response time (${avgResponseTime}ms) exceeded threshold of ${params.MAX_AVG_RESPONSE_TIME}ms")
+                    }
+                    if (successRate < (params.MIN_SUCCESS_RATE as double)) {
+                        performanceIssues.add("Success rate (${String.format('%.2f', successRate)}%) was below threshold of ${params.MIN_SUCCESS_RATE}%")
+                    }
+                    if (requestsPerSec < (params.MIN_REQUESTS_PER_SEC as double)) {
+                        performanceIssues.add("Requests per second (${requestsPerSec}) was below threshold of ${params.MIN_REQUESTS_PER_SEC}")
+                    }
+                    
+                    if (performanceIssues) {
+                        echo "Performance Issues Found:"
+                        performanceIssues.each { issue -> echo "  - ${issue}" }
+                        currentBuild.result = 'UNSTABLE'
+                        env.PERFORMANCE_ISSUES = performanceIssues.join(', ')
+                    } else {
+                        echo "No performance issues found based on thresholds."
+                        env.PERFORMANCE_ISSUES = "None"
+                    }
+                }
+            }
+        }
+        
+        stage('Publish HTML Report') {
+            when {
+                expression { params.GENERATE_HTML_REPORT }
+            }
+            steps {
+                script {
+                    echo "Publishing HTML report..."
+                    
+                    // First, check if we have test results to get the HTML report path
+                    def htmlReportPath = ""
+                    if (fileExists("${WORKSPACE_DIR}/test_results.json")) {
+                        def resultsText = readFile file: "${WORKSPACE_DIR}/test_results.json"
+                        def results = new groovy.json.JsonSlurper().parseText(resultsText)
+                        htmlReportPath = results.html_report_path ?: ""
+                        echo "DEBUG: HTML report path from test results: ${htmlReportPath}"
+                    }
+                    
+                    // Check multiple possible locations for HTML report
+                    def htmlReportExists = false
+                    def reportDir = ""
+                    
+                    // Check if HTML report exists in the path from test results
+                    if (htmlReportPath && fileExists(htmlReportPath)) {
+                        htmlReportExists = true
+                        // Extract directory path using string manipulation instead of File constructor
+                        def lastSlash = htmlReportPath.lastIndexOf('\\')
+                        if (lastSlash > 0) {
+                            reportDir = htmlReportPath.substring(0, lastSlash)
+                        } else {
+                            reportDir = "."
+                        }
+                        echo "DEBUG: Found HTML report at: ${htmlReportPath}"
+                        echo "DEBUG: Report directory: ${reportDir}"
+                    }
+                    // Check generated_reports directory
+                    else if (fileExists("generated_reports\\*.html")) {
+                        htmlReportExists = true
+                        reportDir = "generated_reports"
+                        echo "DEBUG: Found HTML report in generated_reports directory"
+                    }
+                    // Check test_workspace directory
+                    else if (fileExists("${WORKSPACE_DIR}\\*.html")) {
+                        htmlReportExists = true
+                        reportDir = "${WORKSPACE_DIR}"
+                        echo "DEBUG: Found HTML report in test_workspace directory"
+                    }
+                    // Check if any HTML files exist anywhere
+                    else {
+                        def htmlFiles = bat(script: "dir /s /b *.html", returnStdout: true).trim()
+                        if (htmlFiles && !htmlFiles.contains("File Not Found")) {
+                            echo "DEBUG: Found HTML files: ${htmlFiles}"
+                            // Use the first HTML file found and extract directory
+                            def firstHtmlFile = htmlFiles.split('\n')[0]
+                            def lastSlash = firstHtmlFile.lastIndexOf('\\')
+                            if (lastSlash > 0) {
+                                reportDir = firstHtmlFile.substring(0, lastSlash)
+                            } else {
+                                reportDir = "."
+                            }
+                            htmlReportExists = true
+                            echo "DEBUG: Using HTML report from: ${reportDir}"
+                        }
+                    }
+                    
+                    if (htmlReportExists) {
+                        publishHTML([
+                            allowMissing: false,
+                            alwaysLinkToLastBuild: true,
+                            keepAll: true,
+                            reportDir: reportDir,
+                            reportFiles: '*.html',
+                            reportName: 'Locust Test Report',
+                            reportTitles: 'Performance Test Results'
+                        ])
+                        echo "HTML report published successfully from: ${reportDir}"
+                    } else {
+                        echo "No HTML report found to publish"
+                        echo "DEBUG: Checked locations:"
+                        echo "  - ${htmlReportPath}"
+                        echo "  - generated_reports\\*.html"
+                        echo "  - ${WORKSPACE_DIR}\\*.html"
+                        echo "  - Any *.html files in workspace"
+                    }
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            script {
+                echo "=== Test Execution Pipeline Summary ==="
+                echo "Build Number: ${env.BUILD_NUMBER}"
+                echo "Job Name: ${env.JOB_NAME}"
+                echo "Result: ${currentBuild.result}"
+                echo "Build URL: ${env.BUILD_URL}"
+                echo "Git Branch: dev"
+                echo "Test Run ID: ${TEST_RUN_ID}"
+                echo "Script Used: ${env.SELECTED_SCRIPT}"
+                echo "Environment: ${TEST_ENVIRONMENT}"
+                echo "Target Host: ${params.TARGET_HOST}"
+                echo "Test Success: ${env.TEST_SUCCESS}"
+                echo "Total Requests: ${env.TOTAL_REQUESTS}"
+                echo "Success Rate: ${env.SUCCESS_RATE}%"
+                echo "Avg Response Time: ${env.AVG_RESPONSE_TIME}ms"
+                echo "Performance Issues: ${env.PERFORMANCE_ISSUES}"
+                
+                if (params.USE_LLM_ANALYSIS) {
+                    echo "LLM Grade: ${env.LLM_GRADE}"
+                }
+            }
+        }
+        
+        success {
+            echo "✅ Test completed successfully!"
+            echo "📊 Results: ${env.TOTAL_REQUESTS} requests, ${env.SUCCESS_RATE}% success rate"
+            echo "⏱️ Avg Response Time: ${env.AVG_RESPONSE_TIME}ms"
+            echo "📈 Requests/sec: ${env.REQUESTS_PER_SEC}"
+            echo "📋 Check the HTML report for detailed results"
+        }
+        
+        failure {
+            echo "❌ Test execution failed!"
+            echo "📋 Check the console output for error details"
+            echo "🔧 Verify your script and parameters"
+        }
+        
+        unstable {
+            echo "⚠️ Test completed with warnings"
+            echo "📊 Performance thresholds not met"
+            echo "🔍 Issues: ${env.PERFORMANCE_ISSUES}"
+        }
+    }
+} 

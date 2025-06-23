@@ -1,0 +1,29 @@
+{
+  "scenario_name": "Rick and Morty API Test",
+  "host": "https://rickandmortyapi.com",
+  "users": 5,
+  "spawn_rate": 1,
+  "run_time": "2m",
+  "min_wait": 1000,
+  "max_wait": 3000,
+  "assertions": [
+    {
+      "type": "status_code",
+      "value": 200
+    }
+  ],
+  "extract_variables": {
+    "total_pages": "$.info.pages",
+    "total_count": "$.info.count"
+  },
+  "headers": {
+    "Content-Type": "application/json",
+    "User-Agent": "Locust-AI-Agent/1.0"
+  },
+  "params": {},
+  "body": {},
+  "output_dir": "test_reports",
+  "generate_csv": true,
+  "generate_html": true,
+  "log_level": "INFO"
+} 
