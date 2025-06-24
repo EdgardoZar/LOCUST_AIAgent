@@ -48,5 +48,14 @@ test_results_with_llm.json
 # Environment variables
 .env
 
+# Generated content (keep latest versions only)
+generated_reports/*/
+generated_analysis/*.md
+generated_scripts/*.py
+
+# Keep README files in generated directories
+!generated_scripts/README.md
+!generated_reports/README.md
+
 # Note: generated_scripts/ in root directory IS tracked by Git
 # Only test_workspace/ and test_reports/ are ignored 

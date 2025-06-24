@@ -261,11 +261,67 @@ script {
 
 ## 🚀 Advanced Features
 
-### **LLM-Powered Analysis**
-- AI-driven test result interpretation
-- Performance insights and recommendations
-- Automated issue detection
-- Natural language reporting
+### **LLM-Powered Analysis** ✅ **WORKING**
+The Locust AI Agent includes advanced AI-powered analysis capabilities that provide intelligent insights into test results.
+
+#### **Features**
+- **AI-driven test result interpretation** using OpenAI models
+- **Performance insights and recommendations** based on industry best practices
+- **Automated issue detection** with specific problem identification
+- **Natural language reporting** in Markdown format
+- **Configurable AI models** (gpt-3.5-turbo, gpt-4, etc.)
+- **Performance grading** (EXCELLENT, GOOD, ACCEPTABLE, POOR, FAILED)
+
+#### **Setup Requirements**
+1. **OpenAI API Key**: Add as Jenkins credential with ID `openai-api-key`
+2. **Jenkins Parameter**: Enable `USE_LLM_ANALYSIS` in pipeline configuration
+3. **Model Selection**: Configure `LLM_MODEL` parameter (default: gpt-3.5-turbo)
+
+#### **Analysis Output**
+The LLM analysis generates comprehensive reports including:
+- **Performance Grade** with emoji indicators
+- **Executive Summary** of test results
+- **Response Time Analysis** with detailed metrics
+- **Key Insights** highlighting important findings
+- **Recommendations** for performance improvements
+- **Potential Issues** with specific concerns
+- **Business Impact** assessment
+- **Next Steps** for follow-up actions
+
+#### **Example Analysis Report**
+```markdown
+# 📊 LLM Performance Analysis Report
+
+## Test Scenario: `Rick and Morty API Test`
+**Test Run ID:** `Fixed_v6_20250623_153346`
+
+## 📈 Performance Grade: GOOD 👍
+
+### 📝 Summary
+The API test showed good overall performance with 100% success rate and reasonable response times.
+
+### ⏱️ Response Time Analysis
+| Metric | Value |
+|---|---|
+| Average Response Time | 245ms |
+| 90th Percentile | 456ms |
+| 95th Percentile | 678ms |
+
+### 💡 Key Insights
+- All requests completed successfully
+- Response times are within acceptable ranges
+- No performance bottlenecks detected
+
+### 🛠️ Recommendations
+- Monitor response times under higher load
+- Consider caching for frequently accessed data
+```
+
+#### **Integration with Jenkins**
+- **Automatic Analysis**: Runs after test execution when enabled
+- **Artifact Archiving**: Analysis reports are archived as build artifacts
+- **Git Integration**: Analysis reports are committed to repository
+- **Environment Variables**: Results available as `LLM_GRADE` and `LLM_SUMMARY`
 
 ### **Flexible Script Management**
 - Dynamic script generation from JSON
