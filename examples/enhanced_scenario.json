@@ -1,0 +1,183 @@
+{
+  "name": "Enhanced E-commerce API Test",
+  "description": "Comprehensive end-to-end test scenario with parameters, correlations, and assertions",
+  "base_url": "https://api.example.com",
+  "min_wait": 1000,
+  "max_wait": 5000,
+  "parameters": {
+    "data_sources": [
+      {
+        "name": "user_credentials",
+        "type": "csv",
+        "file": "test_data/users.csv",
+        "columns": ["username", "password", "email"]
+      },
+      {
+        "name": "product_catalog",
+        "type": "json",
+        "file": "test_data/products.json",
+        "path": "$.products[*]"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "id": "login_step",
+      "name": "User Login",
+      "method": "POST",
+      "url": "/api/auth/login",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "username": "{{username}}",
+        "password": "{{password}}"
+      },
+      "extract": {
+        "auth_token": {
+          "type": "json_path",
+          "expression": "$.data.token"
+        },
+        "user_id": {
+          "type": "json_path", 
+          "expression": "$.data.user.id"
+        }
+      },
+      "assertions": [
+        {
+          "type": "status_code",
+          "expected": 200,
+          "description": "Login should return 200 status"
+        },
+        {
+          "type": "response_time_ms",
+          "max": 2000,
+          "description": "Login should complete within 2 seconds"
+        },
+        {
+          "type": "json_path",
+          "expression": "$.success",
+          "expected": true,
+          "description": "Login should be successful"
+        },
+        {
+          "type": "body_contains_text",
+          "text": "token",
+          "description": "Response should contain token"
+        }
+      ]
+    },
+    {
+      "id": "search_products",
+      "name": "Search Products",
+      "method": "GET",
+      "url": "/api/products/search",
+      "headers": {
+        "Authorization": "Bearer {{auth_token}}",
+        "Content-Type": "application/json"
+      },
+      "params": {
+        "query": "{{product_name}}",
+        "category": "{{product_category}}"
+      },
+      "extract": {
+        "first_product_id": {
+          "type": "json_path",
+          "expression": "$.products[0].id"
+        },
+        "total_results": {
+          "type": "json_path",
+          "expression": "$.total"
+        }
+      },
+      "assertions": [
+        {
+          "type": "status_code",
+          "expected": 200
+        },
+        {
+          "type": "json_path",
+          "expression": "$.total",
+          "min": 1,
+          "description": "Should find at least one product"
+        }
+      ]
+    },
+    {
+      "id": "add_to_cart",
+      "name": "Add Product to Cart",
+      "method": "POST",
+      "url": "/api/cart/add",
+      "headers": {
+        "Authorization": "Bearer {{auth_token}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "product_id": "{{first_product_id}}",
+        "quantity": 1
+      },
+      "extract": {
+        "cart_id": {
+          "type": "json_path",
+          "expression": "$.cart_id"
+        }
+      },
+      "assertions": [
+        {
+          "type": "status_code",
+          "expected": 201
+        },
+        {
+          "type": "json_path",
+          "expression": "$.success",
+          "expected": true
+        }
+      ]
+    },
+    {
+      "id": "checkout",
+      "name": "Proceed to Checkout",
+      "method": "POST",
+      "url": "/api/checkout",
+      "headers": {
+        "Authorization": "Bearer {{auth_token}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "cart_id": "{{cart_id}}",
+        "shipping_address": {
+          "street": "123 Test St",
+          "city": "Test City",
+          "zip": "12345"
+        }
+      },
+      "extract": {
+        "order_id": {
+          "type": "json_path",
+          "expression": "$.order.id"
+        },
+        "order_status": {
+          "type": "json_path",
+          "expression": "$.order.status"
+        }
+      },
+      "assertions": [
+        {
+          "type": "status_code",
+          "expected": 200
+        },
+        {
+          "type": "json_path",
+          "expression": "$.order.status",
+          "expected": "pending",
+          "description": "Order should be in pending status"
+        },
+        {
+          "type": "regex",
+          "pattern": "ORD-\\d{8}",
+          "description": "Order ID should match expected format"
+        }
+      ]
+    }
+  ]
+} 

@@ -1,0 +1,176 @@
+{
+  "name": "Rick and Morty API Test",
+  "description": "Multi-step test scenario for Rick and Morty API with dynamic page selection and character testing",
+  "base_url": "https://rickandmortyapi.com",
+  "min_wait": 1000,
+  "max_wait": 3000,
+  "steps": [
+    {
+      "id": "get_characters_list",
+      "name": "Get Characters List - Extract Total Pages",
+      "method": "GET",
+      "url": "/api/character",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "extract": {
+        "total_pages": {
+          "type": "json_path",
+          "expression": "$.info.pages"
+        },
+        "total_count": {
+          "type": "json_path",
+          "expression": "$.info.count"
+        }
+      },
+      "assertions": [
+        {
+          "type": "status_code",
+          "expected": 200,
+          "description": "Characters API should return 200 status"
+        },
+        {
+          "type": "json_path",
+          "expression": "$.info.pages",
+          "min": 1,
+          "description": "Should have at least 1 page"
+        },
+        {
+          "type": "json_path",
+          "expression": "$.info.count",
+          "min": 1,
+          "description": "Should have at least 1 character"
+        },
+        {
+          "type": "response_time_ms",
+          "max": 5000,
+          "description": "Response should complete within 5 seconds"
+        }
+      ]
+    },
+    {
+      "id": "get_random_page",
+      "name": "Get Random Page of Characters",
+      "method": "GET",
+      "url": "/api/character/",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "params": {
+        "page": "{{random(1, total_pages)}}"
+      },
+      "extract": {
+        "character_ids": {
+          "type": "json_path",
+          "expression": "$.results[*].id"
+        },
+        "character_names": {
+          "type": "json_path",
+          "expression": "$.results[*].name"
+        },
+        "page_number": {
+          "type": "json_path",
+          "expression": "$.info.next",
+          "transform": "extract_page_number"
+        }
+      },
+      "assertions": [
+        {
+          "type": "status_code",
+          "expected": 200,
+          "description": "Page API should return 200 status"
+        },
+        {
+          "type": "json_path",
+          "expression": "$.results",
+          "min": 1,
+          "description": "Should have at least 1 character in results"
+        },
+        {
+          "type": "response_time_ms",
+          "max": 5000,
+          "description": "Response should complete within 5 seconds"
+        }
+      ]
+    },
+    {
+      "id": "get_random_character",
+      "name": "Get Random Character Details",
+      "method": "GET",
+      "url": "/api/character/{{random_from_array(character_ids)}}",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "extract": {
+        "character_name": {
+          "type": "json_path",
+          "expression": "$.name"
+        },
+        "character_status": {
+          "type": "json_path",
+          "expression": "$.status"
+        },
+        "character_species": {
+          "type": "json_path",
+          "expression": "$.species"
+        },
+        "character_origin": {
+          "type": "json_path",
+          "expression": "$.origin.name"
+        }
+      },
+      "assertions": [
+        {
+          "type": "status_code",
+          "expected": 200,
+          "description": "Character API should return 200 status"
+        },
+        {
+          "type": "json_path",
+          "expression": "$.id",
+          "min": 1,
+          "description": "Character should have a valid ID"
+        },
+        {
+          "type": "json_path",
+          "expression": "$.name",
+          "not_empty": true,
+          "description": "Character should have a name"
+        },
+        {
+          "type": "json_path",
+          "expression": "$.status",
+          "in": ["Alive", "Dead", "unknown"],
+          "description": "Character status should be valid"
+        },
+        {
+          "type": "response_time_ms",
+          "max": 3000,
+          "description": "Response should complete within 3 seconds"
+        }
+      ]
+    },
+    {
+      "id": "get_multiple_characters",
+      "name": "Get Multiple Random Characters",
+      "method": "GET",
+      "url": "/api/character/{{random_subset_from_array(character_ids, 3)}}",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "assertions": [
+        {
+          "type": "status_code",
+          "expected": 200,
+          "description": "Multiple characters API should return 200 status"
+        }
+      ]
+    }
+  ],
+  "custom_functions": {
+    "extract_page_number": {
+      "description": "Extract page number from next URL",
+      "code": "import re\ndef extract_page_number(url):\n    if url and 'page=' in url:\n        match = re.search(r'page=(\\d+)', url)\n        if match:\n            return int(match.group(1))\n    return 1"
+    }
+  }
+} 

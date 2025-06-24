@@ -414,6 +414,37 @@ except Exception as e:
             }
         }
         
+        stage('Check Test Success') {
+            steps {
+                script {
+                    echo "🔍 Checking test execution success..."
+                    
+                    if (env.TEST_SUCCESS == 'False') {
+                        echo "❌ Test execution failed! Stopping pipeline."
+                        echo "📋 Test Results Summary:"
+                        echo "  Success: ${env.TEST_SUCCESS}"
+                        echo "  Total Requests: ${env.TOTAL_REQUESTS}"
+                        echo "  Failed Requests: ${env.FAILED_REQUESTS}"
+                        echo "  Avg Response Time: ${env.AVG_RESPONSE_TIME}ms"
+                        echo "  Requests/sec: ${env.REQUESTS_PER_SEC}"
+                        echo ""
+                        echo "🚫 Pipeline stopped due to test failure."
+                        echo "💡 Check the script for syntax errors or API issues."
+                        currentBuild.result = 'FAILURE'
+                        error "Test execution failed - stopping pipeline"
+                    } else {
+                        echo "✅ Test execution successful! Continuing with pipeline."
+                        echo "📊 Test Results:"
+                        echo "  Success: ${env.TEST_SUCCESS}"
+                        echo "  Total Requests: ${env.TOTAL_REQUESTS}"
+                        echo "  Failed Requests: ${env.FAILED_REQUESTS}"
+                        echo "  Avg Response Time: ${env.AVG_RESPONSE_TIME}ms"
+                        echo "  Requests/sec: ${env.REQUESTS_PER_SEC}"
+                    }
+                }
+            }
+        }
+        
         stage('Commit Reports to Git') {
             steps {
                 script {
@@ -513,6 +544,13 @@ except Exception as e:
                     def requestsPerSec = testResult.requests_per_sec as double
                     
                     def successRate = (totalRequests > 0) ? (((totalRequests - failedRequests) * 100.0) / totalRequests) : 0.0
+                    
+                    // Set environment variables for post section display
+                    env.TEST_SUCCESS = results.workflow_success.toString()
+                    env.TOTAL_REQUESTS = totalRequests.toString()
+                    env.SUCCESS_RATE = String.format('%.2f', successRate)
+                    env.AVG_RESPONSE_TIME = String.format('%.2f', avgResponseTime)
+                    env.REQUESTS_PER_SEC = String.format('%.2f', requestsPerSec)
                     
                     echo "Test Results Analysis:"
                     echo "  Success: ${results.workflow_success}"

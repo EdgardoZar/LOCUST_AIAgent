@@ -1,0 +1,2 @@
+Method,Name,Error,Occurrences
+GET,/api/character?page=6,CatchResponseError('Assertions failed: {failure_message}'),5

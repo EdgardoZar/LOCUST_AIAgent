@@ -10,7 +10,7 @@ The Locust AI Agent is a standalone module that provides automated performance t
 
 - **Automated Test Generation**: Create Locust scripts from JSON configurations
 - **Headless Test Execution**: Run tests with configurable parameters
-- **Intelligent Analysis**: LLM-powered result analysis with insights and recommendations
+- **Intelligent Analysis**: ✅ **LLM-powered result analysis with insights and recommendations** (WORKING)
 - **CI/CD Integration**: Jenkins pipeline support with artifact archiving
 - **Flexible Configuration**: JSON-based scenario and test configuration
 - **Comprehensive Reporting**: HTML and CSV report generation
@@ -383,4 +383,54 @@ For issues and questions:
 1. Check the troubleshooting section
 2. Review the examples
 3. Check the SwarmTest documentation
-4. Create an issue in the project repository 
+4. Create an issue in the project repository
+
+## Maintenance
+
+### Cleanup Recommendations
+
+To keep the project organized and prevent repository bloat:
+
+#### **Generated Scripts** (`generated_scripts/`)
+- Keep only the latest 2-3 versions of each script
+- Delete older versions with suffixes like `_v1`, `_v2`, etc.
+- Retain the `README.md` file
+
+#### **Generated Reports** (`generated_reports/`)
+- Keep only the last 3-5 most recent test runs
+- Delete older timestamped directories
+- Remove individual CSV/HTML files not in directories
+
+#### **Generated Analysis** (`generated_analysis/`)
+- Keep only the latest 2-3 analysis reports
+- Delete older `.md` files
+
+#### **Test Files**
+- Delete `test_results.json` after reviewing
+- Remove `test_workspace/` directory (temporary files)
+
+#### **Manual Cleanup Commands**
+```bash
+# Remove old generated scripts (keep latest versions)
+find generated_scripts/ -name "*_v[0-9].py" -delete
+
+# Remove old reports (keep last 5 days)
+find generated_reports/ -type d -name "*_2025062[0-2]*" -exec rm -rf {} \;
+
+# Remove old analysis files
+find generated_analysis/ -name "*_2025062[0-2]*.md" -delete
+
+# Clean test results
+rm -f test_results.json
+rm -rf test_workspace/
+```
+
+## Documentation
+
+- [Enhanced Features Guide](docs/ENHANCED_FEATURES_GUIDE.md) - Advanced features and capabilities
+- [Random Selection Guide](docs/RANDOM_SELECTION_GUIDE.md) - Dynamic random selection features for realistic test scenarios
+- [Jenkins Complete Guide](docs/JENKINS_COMPLETE_GUIDE.md) - Comprehensive Jenkins integration guide
+- [Jenkins Setup Checklist](docs/JENKINS_SETUP_CHECKLIST.md) - Step-by-step Jenkins setup
+- [Jenkins Environment Variables](docs/JENKINS_ENVIRONMENT_VARIABLES.md) - Environment variable configuration
+- [Jenkins Parameters Quick Reference](docs/JENKINS_PARAMETERS_QUICK_REFERENCE.md) - Parameter configuration guide
+- [Jenkins Pipeline Parameters Guide](docs/JENKINS_PIPELINE_PARAMETERS_GUIDE.md) - Advanced pipeline configuration 
