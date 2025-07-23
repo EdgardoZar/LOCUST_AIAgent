@@ -1,2 +1,0 @@
-Method,Name,Error,Occurrences
-GET,/api/character/%5B%5D,CatchResponseError('Assertions failed: {failure_message}'),109
