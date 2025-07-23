@@ -545,12 +545,36 @@ except Exception as e:
                         // Check if there are any analysis files to commit
                         def analysisFilesExist = fileExists("generated_analysis")
                         if (analysisFilesExist) {
+                            echo "Found generated_analysis directory, attempting to commit files..."
+                            
+                            // List files in the analysis directory for debugging
+                            dir("generated_analysis") {
+                                def files = bat(script: "dir /b *.md", returnStdout: true).trim()
+                                echo "Analysis files found: ${files}"
+                            }
+                            
                             bat """
+                                echo DEBUG: Configuring Git...
                                 git config user.email "${GIT_USERNAME}@users.noreply.github.com"
                                 git config user.name "${GIT_USERNAME}"
+                                
+                                echo DEBUG: Ensuring we're on dev branch...
+                                git checkout dev
+                                
+                                echo DEBUG: Pulling latest changes...
+                                git pull https://%GIT_USERNAME%:%GIT_PASSWORD%@github.com/EdgardoZar/LOCUST_AIAgent.git dev || echo "Pull failed"
+                                
+                                echo DEBUG: Adding analysis files to Git...
                                 git add "${analysisDir}"
-                                git diff --cached --quiet && echo "No new analysis to commit" || git commit -m "${commitMessage}"
-                                git push https://%GIT_USERNAME%:%GIT_PASSWORD%@github.com/EdgardoZar/LOCUST_AIAgent.git dev || echo "Push failed - analysis may already exist"
+                                
+                                echo DEBUG: Checking staged changes...
+                                git status --porcelain
+                                
+                                echo DEBUG: Attempting to commit...
+                                git commit -m "${commitMessage}" || echo "Commit failed or no changes to commit"
+                                
+                                echo DEBUG: Pushing to remote...
+                                git push https://%GIT_USERNAME%:%GIT_PASSWORD%@github.com/EdgardoZar/LOCUST_AIAgent.git dev || echo "Push failed"
                             """
                             echo "✅ LLM Analysis committed to Git."
                         } else {
