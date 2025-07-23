@@ -153,6 +153,8 @@ Please provide:
 3. A performance assessment grade (Excellent/Good/Acceptable/Poor).
 4. Key insights, recommendations, potential issues, business impact, and next steps.
 
+IMPORTANT: Do not use any emoji characters or special Unicode symbols in your response. Use only standard ASCII text.
+
 Format your response as JSON with the following structure:
 {{
     "summary": "Brief summary of test results including users and duration.",
