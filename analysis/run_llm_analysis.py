@@ -110,27 +110,28 @@ def read_summary_stats(stats_file_path):
 def format_as_markdown(analysis_data, scenario_name, test_run_id):
     """Formats the LLM analysis JSON into a Markdown report."""
     
-    grade_emojis = {
-        "EXCELLENT": "✅",
-        "GOOD": "👍",
-        "ACCEPTABLE": "👌",
-        "POOR": "👎",
-        "FAILED": "❌",
-        "UNKNOWN": "❓"
+    # Use text alternatives instead of emojis for better Windows compatibility
+    grade_indicators = {
+        "EXCELLENT": "[EXCELLENT]",
+        "GOOD": "[GOOD]",
+        "ACCEPTABLE": "[ACCEPTABLE]",
+        "POOR": "[POOR]",
+        "FAILED": "[FAILED]",
+        "UNKNOWN": "[UNKNOWN]"
     }
 
-    markdown = f"# 📊 LLM Performance Analysis Report\n\n"
+    markdown = f"# LLM Performance Analysis Report\n\n"
     markdown += f"## Test Scenario: `{scenario_name}`\n"
     markdown += f"**Test Run ID:** `{test_run_id}`\n\n"
     
     grade = analysis_data.get('performance_grade', 'UNKNOWN')
-    markdown += f"## 📈 Performance Grade: {grade} {grade_emojis.get(grade, '')}\n\n"
+    markdown += f"## Performance Grade: {grade} {grade_indicators.get(grade, '')}\n\n"
 
-    markdown += f"### 📝 Summary\n"
+    markdown += f"### Summary\n"
     markdown += f"{analysis_data.get('summary', 'No summary provided.')}\n\n"
 
     # Add the new response time table
-    markdown += "### ⏱️ Response Time Analysis\n"
+    markdown += "### Response Time Analysis\n"
     table_data = analysis_data.get('response_time_table', [])
     if table_data:
         markdown += "| Metric | Value |\n"
@@ -139,25 +140,25 @@ def format_as_markdown(analysis_data, scenario_name, test_run_id):
             markdown += f"| {row.get('Metric')} | {row.get('Value')} |\n"
         markdown += "\n"
 
-    markdown += "### 💡 Key Insights\n"
+    markdown += "### Key Insights\n"
     for insight in analysis_data.get('key_insights', []):
         markdown += f"- {insight}\n"
     markdown += "\n"
     
-    markdown += "### 🛠️ Recommendations\n"
+    markdown += "### Recommendations\n"
     for rec in analysis_data.get('recommendations', []):
         markdown += f"- {rec}\n"
     markdown += "\n"
     
-    markdown += "### 🚨 Potential Issues & Concerns\n"
+    markdown += "### Potential Issues & Concerns\n"
     for issue in analysis_data.get('issues', []):
         markdown += f"- {issue}\n"
     markdown += "\n"
 
-    markdown += f"### 💼 Business Impact\n"
+    markdown += f"### Business Impact\n"
     markdown += f"{analysis_data.get('business_impact', 'Not assessed.')}\n\n"
     
-    markdown += "### 🚀 Next Steps\n"
+    markdown += "### Next Steps\n"
     for step in analysis_data.get('next_steps', []):
         markdown += f"- {step}\n"
     
@@ -229,10 +230,24 @@ def main():
         report_filename = f"{args.scenario_name.replace(' ', '_')}_{args.test_run_id}_analysis.md"
         report_path = os.path.join(args.analysis_dir, report_filename)
         
-        with open(report_path, "w", encoding="utf-8") as f:
-            f.write(markdown_report)
-        
-        print(f"\n✅ Successfully generated analysis report: {report_path}")
+        try:
+            with open(report_path, "w", encoding="utf-8") as f:
+                f.write(markdown_report)
+            print(f"\n✅ Successfully generated analysis report: {report_path}")
+        except UnicodeEncodeError as e:
+            print(f"Warning: Unicode encoding error when writing file: {e}")
+            print("Attempting to write file with ASCII encoding...")
+            try:
+                # Fallback: write with ASCII encoding, replacing problematic characters
+                with open(report_path, "w", encoding="ascii", errors="replace") as f:
+                    f.write(markdown_report)
+                print(f"✅ Successfully generated analysis report (ASCII): {report_path}")
+            except Exception as e2:
+                print(f"Error: Could not write file even with ASCII encoding: {e2}")
+                raise
+        except Exception as e:
+            print(f"Error writing markdown file: {e}")
+            raise
 
     except FileNotFoundError as e:
         print(f"File not found error: {e}")
