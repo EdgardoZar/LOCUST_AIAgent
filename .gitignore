@@ -50,7 +50,6 @@ test_results_with_llm.json
 
 # Generated content (keep latest versions only)
 generated_reports/*/
-generated_analysis/*.md
 generated_scripts/*.py
 
 # Keep README files in generated directories
