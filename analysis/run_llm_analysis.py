@@ -250,9 +250,19 @@ def main():
 
         # Clean emoji characters from the analysis JSON
         cleaned_analysis_json = clean_json_content(analysis_json)
+        
+        # Debug: Check if there are still emoji characters
+        analysis_json_str = json.dumps(cleaned_analysis_json, indent=2)
+        if '\u2705' in analysis_json_str:
+            print("WARNING: Found \\u2705 character in cleaned JSON, removing it...")
+            analysis_json_str = analysis_json_str.replace('\u2705', '[SUCCESS]')
+            cleaned_analysis_json = json.loads(analysis_json_str)
 
         # Format as markdown
         markdown_report = format_as_markdown(cleaned_analysis_json, args.scenario_name, args.test_run_id)
+        
+        # Final check: Clean any remaining emoji characters from markdown
+        markdown_report = clean_emoji_characters(markdown_report)
 
         # Save markdown file
         os.makedirs(args.analysis_dir, exist_ok=True)
@@ -262,7 +272,7 @@ def main():
         try:
             with open(report_path, "w", encoding="utf-8") as f:
                 f.write(markdown_report)
-            print(f"\n✅ Successfully generated analysis report: {report_path}")
+            print(f"\n[SUCCESS] Successfully generated analysis report: {report_path}")
         except UnicodeEncodeError as e:
             print(f"Warning: Unicode encoding error when writing file: {e}")
             print("Attempting to write file with ASCII encoding...")
@@ -270,7 +280,7 @@ def main():
                 # Fallback: write with ASCII encoding, replacing problematic characters
                 with open(report_path, "w", encoding="ascii", errors="replace") as f:
                     f.write(markdown_report)
-                print(f"✅ Successfully generated analysis report (ASCII): {report_path}")
+                print(f"[SUCCESS] Successfully generated analysis report (ASCII): {report_path}")
             except Exception as e2:
                 print(f"Error: Could not write file even with ASCII encoding: {e2}")
                 raise
