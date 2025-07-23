@@ -13,8 +13,19 @@ def find_latest_reports(reports_dir):
     if not os.path.isdir(reports_dir):
         raise FileNotFoundError(f"Reports directory not found: {reports_dir}")
 
-    # 1. Find all stats files, which are essential for the analysis
-    stats_files = [f for f in os.listdir(reports_dir) if f.endswith('_stats.csv')]
+    print(f"Searching for reports in: {reports_dir}")
+    
+    # 1. Find all stats files recursively, which are essential for the analysis
+    stats_files = []
+    for root, dirs, files in os.walk(reports_dir):
+        for file in files:
+            if file.endswith('_stats.csv'):
+                stats_files.append(os.path.join(root, file))
+    
+    print(f"Found {len(stats_files)} stats files:")
+    for stats_file in stats_files:
+        print(f"  - {stats_file}")
+    
     if not stats_files:
         raise FileNotFoundError("No _stats.csv files found in the reports directory.")
 
@@ -24,32 +35,43 @@ def find_latest_reports(reports_dir):
     latest_timestamp = ''
     latest_stats_file = ''
 
-    for f in stats_files:
-        match = timestamp_pattern.search(f)
+    for stats_file_path in stats_files:
+        # Try to extract timestamp from the directory name first (more reliable)
+        dir_name = os.path.basename(os.path.dirname(stats_file_path))
+        match = timestamp_pattern.search(dir_name)
+        
+        if not match:
+            # Fallback: try to extract from filename
+            match = timestamp_pattern.search(os.path.basename(stats_file_path))
+        
         if match:
             timestamp = match.group(1)
+            print(f"  Found timestamp {timestamp} in {stats_file_path}")
             if timestamp > latest_timestamp:
                 latest_timestamp = timestamp
-                latest_stats_file = f
+                latest_stats_file = stats_file_path
     
     if not latest_stats_file:
         raise ValueError("Could not determine the latest stats file from available files.")
 
-    print(f"Found latest stats file: {latest_stats_file}")
-    stats_file_path = os.path.join(reports_dir, latest_stats_file)
+    print(f"Selected latest stats file: {latest_stats_file}")
+    stats_file_path = latest_stats_file
 
-    # 3. Now, find the corresponding HTML file for that same timestamp (it's optional)
+    # 3. Now, find the corresponding HTML file in the same directory
     html_file_path = None
-    # The HTML file will have the timestamp preceded by an underscore and followed by a dot
-    html_file_candidate_name_part = f"_{latest_timestamp}.html"
-    for f in os.listdir(reports_dir):
-        if f.endswith(html_file_candidate_name_part):
-             # To be extra sure, check that the main name part also matches
-             stats_prefix = latest_stats_file.split(f'_{latest_timestamp}_')[0]
-             html_prefix = f.split(f'_{latest_timestamp}.')[0]
-             if stats_prefix == html_prefix:
-                html_file_path = os.path.join(reports_dir, f)
-                break
+    stats_dir = os.path.dirname(stats_file_path)
+    
+    print(f"Looking for HTML file in directory: {stats_dir}")
+    
+    # Look for HTML file in the same directory as the stats file
+    for file in os.listdir(stats_dir):
+        if file.endswith('.html'):
+            html_file_path = os.path.join(stats_dir, file)
+            print(f"Found HTML file: {html_file_path}")
+            break
+    
+    if not html_file_path:
+        print("No HTML file found in the same directory as stats file")
 
     return stats_file_path, html_file_path
 
@@ -160,6 +182,19 @@ def main():
 
     try:
         print(f"Searching for reports in: {args.reports_dir}")
+        
+        # Check if reports directory exists
+        if not os.path.exists(args.reports_dir):
+            print(f"ERROR: Reports directory does not exist: {args.reports_dir}")
+            print("Available directories:")
+            workspace_dir = os.path.dirname(args.reports_dir)
+            if os.path.exists(workspace_dir):
+                for item in os.listdir(workspace_dir):
+                    item_path = os.path.join(workspace_dir, item)
+                    if os.path.isdir(item_path):
+                        print(f"  - {item}")
+            return
+        
         stats_csv_path, html_report_path = find_latest_reports(args.reports_dir)
 
         if not stats_csv_path:
@@ -199,8 +234,17 @@ def main():
         
         print(f"\n✅ Successfully generated analysis report: {report_path}")
 
+    except FileNotFoundError as e:
+        print(f"File not found error: {e}")
+        print("This usually means the test execution did not generate the expected report files.")
+        print("Please check that:")
+        print("1. The test execution completed successfully")
+        print("2. CSV reports were generated")
+        print("3. The reports directory structure is correct")
     except Exception as e:
         print(f"An error occurred: {e}")
+        import traceback
+        traceback.print_exc()
 
 if __name__ == "__main__":
     main() 
