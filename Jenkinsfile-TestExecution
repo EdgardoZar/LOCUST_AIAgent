@@ -504,20 +504,47 @@ except Exception as e:
                         """
                     }
                     
+                    // Extract LLM grade from the generated analysis file
+                    def analysisFiles = findFiles(glob: "generated_analysis/*_analysis.md")
+                    if (analysisFiles.length > 0) {
+                        def latestAnalysisFile = analysisFiles[analysisFiles.length - 1].path
+                        echo "Reading analysis file: ${latestAnalysisFile}"
+                        
+                        def analysisContent = readFile file: latestAnalysisFile
+                        def gradeMatch = analysisContent =~ /Performance Grade: ([A-Z]+)/
+                        if (gradeMatch.find()) {
+                            env.LLM_GRADE = gradeMatch[0][1]
+                            echo "Extracted LLM Grade: ${env.LLM_GRADE}"
+                        } else {
+                            env.LLM_GRADE = "UNKNOWN"
+                            echo "Could not extract LLM Grade from analysis file"
+                        }
+                    } else {
+                        env.LLM_GRADE = "NO_ANALYSIS"
+                        echo "No analysis files found"
+                    }
+                    
                     archiveArtifacts artifacts: "generated_analysis/*.md", fingerprint: true
                     echo "✅ LLM Analysis report archived."
                     
                     withCredentials([usernamePassword(credentialsId: 'github-credentials', usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD')]) {
                         def commitMessage = "feat(analysis): Add LLM analysis for ${env.SCRIPT_NAME} - Build #${env.BUILD_NUMBER}"
-                        bat """
-                            git config user.email "${GIT_USERNAME}@users.noreply.github.com"
-                            git config user.name "${GIT_USERNAME}"
-                            git add "${analysisDir}"
-                            git diff --cached --quiet && echo "No new analysis to commit" || git commit -m "${commitMessage}"
-                            git push https://%GIT_USERNAME%:%GIT_PASSWORD%@github.com/EdgardoZar/LOCUST_AIAgent.git dev
-                        """
+                        
+                        // Check if there are any analysis files to commit
+                        def analysisFilesExist = fileExists("generated_analysis")
+                        if (analysisFilesExist) {
+                            bat """
+                                git config user.email "${GIT_USERNAME}@users.noreply.github.com"
+                                git config user.name "${GIT_USERNAME}"
+                                git add "${analysisDir}"
+                                git diff --cached --quiet && echo "No new analysis to commit" || git commit -m "${commitMessage}"
+                                git push https://%GIT_USERNAME%:%GIT_PASSWORD%@github.com/EdgardoZar/LOCUST_AIAgent.git dev || echo "Push failed - analysis may already exist"
+                            """
+                            echo "✅ LLM Analysis committed to Git."
+                        } else {
+                            echo "⚠️ No analysis files found to commit"
+                        }
                     }
-                    echo "✅ LLM Analysis committed to Git."
                 }
             }
         }
