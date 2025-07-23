@@ -8,6 +8,32 @@ import json
 import re
 from llm_analyzer import LLMAnalyzer
 
+def clean_emoji_characters(text):
+    """Remove emoji characters from text to ensure Windows compatibility."""
+    # Remove emoji characters using Unicode ranges
+    emoji_pattern = re.compile(
+        "["
+        "\U0001F600-\U0001F64F"  # emoticons
+        "\U0001F300-\U0001F5FF"  # symbols & pictographs
+        "\U0001F680-\U0001F6FF"  # transport & map symbols
+        "\U0001F1E0-\U0001F1FF"  # flags (iOS)
+        "\U00002702-\U000027B0"  # dingbats
+        "\U000024C2-\U0001F251"  # enclosed characters
+        "]+", flags=re.UNICODE
+    )
+    return emoji_pattern.sub('', text)
+
+def clean_json_content(data):
+    """Recursively clean emoji characters from JSON content."""
+    if isinstance(data, dict):
+        return {key: clean_json_content(value) for key, value in data.items()}
+    elif isinstance(data, list):
+        return [clean_json_content(item) for item in data]
+    elif isinstance(data, str):
+        return clean_emoji_characters(data)
+    else:
+        return data
+
 def find_latest_reports(reports_dir):
     """Finds the most recent stats and HTML report files based on available _stats.csv files."""
     if not os.path.isdir(reports_dir):
@@ -222,8 +248,11 @@ def main():
         
         print("\nLLM Analysis (JSON):\n", json.dumps(analysis_json, indent=2))
 
+        # Clean emoji characters from the analysis JSON
+        cleaned_analysis_json = clean_json_content(analysis_json)
+
         # Format as markdown
-        markdown_report = format_as_markdown(analysis_json, args.scenario_name, args.test_run_id)
+        markdown_report = format_as_markdown(cleaned_analysis_json, args.scenario_name, args.test_run_id)
 
         # Save markdown file
         os.makedirs(args.analysis_dir, exist_ok=True)
