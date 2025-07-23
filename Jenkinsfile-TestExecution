@@ -505,24 +505,36 @@ except Exception as e:
                     }
                     
                     // Extract LLM grade from the generated analysis file
-                    def analysisFiles = findFiles(glob: "generated_analysis/*_analysis.md")
-                    if (analysisFiles.length > 0) {
-                        def latestAnalysisFile = analysisFiles[analysisFiles.length - 1].path
-                        echo "Reading analysis file: ${latestAnalysisFile}"
-                        
-                        def analysisContent = readFile file: latestAnalysisFile
-                        def gradeMatch = analysisContent =~ /Performance Grade: ([A-Z]+)/
-                        if (gradeMatch.find()) {
-                            env.LLM_GRADE = gradeMatch[0][1]
-                            echo "Extracted LLM Grade: ${env.LLM_GRADE}"
-                        } else {
-                            env.LLM_GRADE = "UNKNOWN"
-                            echo "Could not extract LLM Grade from analysis file"
+                    def llmGrade = "NO_ANALYSIS"
+                    if (fileExists("generated_analysis")) {
+                        dir("generated_analysis") {
+                            def analysisFiles = bat(script: "dir /b *_analysis.md 2>nul || echo.", returnStdout: true).trim()
+                            if (analysisFiles && analysisFiles != '.') {
+                                def fileList = analysisFiles.split('\r\n').findAll { it.trim() != '' }
+                                if (fileList.size() > 0) {
+                                    def latestAnalysisFile = fileList.last()
+                                    echo "Reading analysis file: ${latestAnalysisFile}"
+                                    
+                                    def analysisContent = readFile file: latestAnalysisFile
+                                    def gradeMatch = analysisContent =~ /Performance Grade: ([A-Z]+)/
+                                    if (gradeMatch.find()) {
+                                        llmGrade = gradeMatch[0][1]
+                                        echo "Extracted LLM Grade: ${llmGrade}"
+                                    } else {
+                                        llmGrade = "UNKNOWN"
+                                        echo "Could not extract LLM Grade from analysis file"
+                                    }
+                                } else {
+                                    echo "No analysis files found"
+                                }
+                            } else {
+                                echo "No analysis files found"
+                            }
                         }
                     } else {
-                        env.LLM_GRADE = "NO_ANALYSIS"
-                        echo "No analysis files found"
+                        echo "Generated analysis directory does not exist"
                     }
+                    env.LLM_GRADE = llmGrade
                     
                     archiveArtifacts artifacts: "generated_analysis/*.md", fingerprint: true
                     echo "✅ LLM Analysis report archived."
