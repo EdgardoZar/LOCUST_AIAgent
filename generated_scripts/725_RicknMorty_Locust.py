@@ -3,7 +3,7 @@ import json
 import time
 import logging
 
-class 725RicknmortyLocustUser(HttpUser):
+class Test725ricknmortylocustUser(HttpUser):
     wait_time = between(1.0, 5.0)
 
     def on_start(self):
