@@ -5,6 +5,10 @@ sqlalchemy>=2.0.25
 jsonpath-ng==1.6.0
 python-dateutil==2.8.2
 
+# AI Agent dependencies
+openai>=1.0.0
+pyyaml>=6.0
+
 # Optional dependencies for enhanced functionality
 python-dotenv==1.0.0
 

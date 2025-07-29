@@ -17,8 +17,10 @@ An AI-powered agent that generates Locust performance test scripts from natural 
 Agent/
 ├── README.md                           # This file
 ├── locust_agent.py                     # Main agent script
+├── enhanced_locust_agent.py            # Enhanced agent with multi-API support
 ├── script_generator_config.yaml        # Script generation configuration
 ├── test_execution_config.yaml          # Test execution configuration
+├── setup_env.py                        # OpenAI API key setup script
 ├── api_endpoints.csv                   # Common API endpoints reference
 ├── test_scenarios.csv                  # Predefined test scenarios
 ├── load_profiles.csv                   # Load testing profiles
@@ -26,26 +28,75 @@ Agent/
 └── data_sources.csv                    # Data source templates
 ```
 
+## 🔑 OpenAI API Key Setup
+
+**IMPORTANT**: You need an OpenAI API key to use the enhanced agent features.
+
+### **Quick Setup**
+
+Run the setup script:
+```bash
+python Agent/setup_env.py
+```
+
+### **Manual Setup**
+
+**Option 1: Environment Variable (Recommended)**
+
+**Windows PowerShell:**
+```powershell
+$env:OPENAI_API_KEY="your-openai-api-key-here"
+```
+
+**Windows Command Prompt:**
+```cmd
+set OPENAI_API_KEY=your-openai-api-key-here
+```
+
+**Linux/Mac:**
+```bash
+export OPENAI_API_KEY="your-openai-api-key-here"
+```
+
+**Option 2: Create a .env file**
+
+Create a `.env` file in the project root:
+```
+OPENAI_API_KEY=your-openai-api-key-here
+```
+
+**Option 3: Temporary Session**
+
+Set it for the current session:
+```bash
+python -c "import os; os.environ['OPENAI_API_KEY']='your-key-here'"
+```
+
+### **Get Your OpenAI API Key**
+
+1. Go to [OpenAI Platform](https://platform.openai.com/)
+2. Sign up or log in
+3. Navigate to API Keys section
+4. Create a new API key
+5. Copy the key and use it in the setup above
+
 ## 🛠️ Installation
 
 1. **Install Dependencies**:
    ```bash
-   pip install openai pyyaml
+   pip install -r requirements.txt
    ```
 
-2. **Set Environment Variables**:
-   ```bash
-   export OPENAI_API_KEY="your-openai-api-key"
-   ```
+2. **Set OpenAI API Key** (see setup above)
 
 3. **Verify Configuration**:
    ```bash
-   python Agent/locust_agent.py --help
+   python Agent/setup_env.py
    ```
 
 ## 📖 Usage
 
-### Command Line Usage
+### **Basic Agent Usage**
 
 ```bash
 # Basic usage
@@ -58,7 +109,20 @@ python Agent/locust_agent.py "Load test the e-commerce API with 50 users for 10 
 python Agent/locust_agent.py "Test user authentication API with 10 users for 2 minutes, verify response time under 500ms and status code 200"
 ```
 
-### Programmatic Usage
+### **Enhanced Agent Usage (Multi-API Sequences)**
+
+```bash
+# Authentication flow with correlation
+python Agent/enhanced_locust_agent.py "Create a HomePage transaction that calls /api/login, then /api/user/profile using the token from login, then /api/logout"
+
+# E-commerce checkout flow
+python Agent/enhanced_locust_agent.py "Create a CheckoutFlow transaction that calls /api/products, extracts product_id, calls /api/cart with product_id, extracts cart_id, calls /api/orders with cart_id"
+
+# Rick and Morty sequence
+python Agent/enhanced_locust_agent.py "Create a GetCharacters transaction that calls /api/character?page=1, extracts character_name, calls /api/character?name={character_name}"
+```
+
+### **Programmatic Usage**
 
 ```python
 from Agent.locust_agent import LocustAgent
@@ -79,63 +143,79 @@ else:
     print(f"Error: {result['error']}")
 ```
 
+### **Enhanced Agent Programmatic Usage**
+
+```python
+from Agent.enhanced_locust_agent import EnhancedLocustAgent
+
+# Initialize enhanced agent
+agent = EnhancedLocustAgent()
+
+# Process complex multi-API request
+result = agent.process_enhanced_request(
+    "Create a HomePage transaction that calls /api/login, then /api/user/profile using the token from login, then /api/logout"
+)
+
+if result['success']:
+    print(f"Transaction: {result['parsed_request'].transaction_name}")
+    print(f"API Steps: {len(result['parsed_request'].api_sequence)}")
+    print(f"Script: {result['script_path']}")
+```
+
 ## 🎯 Natural Language Examples
 
-### Basic API Testing
+### **Basic API Testing**
 ```
 "Test the Rick and Morty API with 10 users for 5 minutes"
 ```
 
-### E-commerce Load Testing
+### **E-commerce Load Testing**
 ```
 "Load test the e-commerce API with 50 users for 10 minutes, 
 test product browsing and checkout flow"
 ```
 
-### Authentication Testing
+### **Authentication Testing**
 ```
 "Test user login API with 20 users for 3 minutes, 
 verify response time under 500ms and successful authentication"
 ```
 
-### Stress Testing
+### **Multi-API Sequences with Correlation**
 ```
-"Stress test the payment API with 100 users for 15 minutes, 
-test order creation and payment processing"
-```
+"Create a HomePage transaction that calls /api/login, then /api/user/profile using the token from login, then /api/logout"
 
-### Custom Endpoints
-```
-"Test specific endpoints /api/users and /api/products 
-with 30 users for 8 minutes"
+"Create a CheckoutFlow transaction that calls /api/products, extracts product_id, calls /api/cart with product_id, extracts cart_id, calls /api/orders with cart_id"
+
+"Create a GetCharacters transaction that calls /api/character?page=1, extracts character_name, calls /api/character?name={character_name}"
 ```
 
 ## 📊 Data Sources
 
 The agent uses several CSV data sources to enhance script generation:
 
-### API Endpoints (`api_endpoints.csv`)
+### **API Endpoints (`api_endpoints.csv`)**
 Contains common API endpoints with their specifications:
 - HTTP method
 - Expected status codes
 - Response time expectations
 - Complexity levels
 
-### Test Scenarios (`test_scenarios.csv`)
+### **Test Scenarios (`test_scenarios.csv`)**
 Predefined test scenarios for common use cases:
 - User registration flow
 - E-commerce checkout
 - API health checks
 - Authentication flows
 
-### Load Profiles (`load_profiles.csv`)
+### **Load Profiles (`load_profiles.csv`)**
 Different load testing profiles:
 - Smoke test (5 users, 2 minutes)
 - Load test (20 users, 5 minutes)
 - Stress test (50 users, 10 minutes)
 - Spike test (100 users, 5 minutes)
 
-### Assertion Templates (`assertion_templates.csv`)
+### **Assertion Templates (`assertion_templates.csv`)**
 Common validation patterns:
 - Status code verification
 - Response time thresholds
@@ -144,7 +224,7 @@ Common validation patterns:
 
 ## ⚙️ Configuration
 
-### Script Generator Configuration (`script_generator_config.yaml`)
+### **Script Generator Configuration (`script_generator_config.yaml`)**
 
 Key settings:
 - **OpenAI Model**: Choose between GPT-3.5-turbo or GPT-4
@@ -153,7 +233,7 @@ Key settings:
 - **Assertion Templates**: Common validation patterns
 - **Output Formats**: JSON, CSV, HTML, Markdown
 
-### Test Execution Configuration (`test_execution_config.yaml`)
+### **Test Execution Configuration (`test_execution_config.yaml`)**
 
 Key settings:
 - **Jenkins Integration**: Pipeline stages and timeouts
@@ -163,7 +243,7 @@ Key settings:
 
 ## 🔧 Customization
 
-### Adding New API Endpoints
+### **Adding New API Endpoints**
 
 Edit `api_endpoints.csv`:
 ```csv
@@ -171,7 +251,7 @@ endpoint,method,description,base_url,headers,parameters,expected_status,response
 /api/custom,GET,Custom endpoint,https://api.example.com,Content-Type: application/json,param: string,200,150,low
 ```
 
-### Creating Custom Load Profiles
+### **Creating Custom Load Profiles**
 
 Edit `load_profiles.csv`:
 ```csv
@@ -179,7 +259,7 @@ profile_name,description,users,spawn_rate,run_time,ramp_up,peak_load,steady_load
 Custom Test,Custom load profile,25,2,8m,2m,25,25,2m,Custom testing
 ```
 
-### Adding Assertion Templates
+### **Adding Assertion Templates**
 
 Edit `assertion_templates.csv`:
 ```csv
@@ -189,7 +269,7 @@ custom_validation,Custom validation logic,custom: {python_code},custom: len(resp
 
 ## 🚀 Jenkins Integration
 
-### Script Generation Pipeline
+### **Script Generation Pipeline**
 
 Use `script_generator_config.yaml` with Jenkins:
 ```yaml
@@ -210,7 +290,7 @@ pipeline {
 }
 ```
 
-### Test Execution Pipeline
+### **Test Execution Pipeline**
 
 Use `test_execution_config.yaml` with Jenkins:
 ```yaml
@@ -234,7 +314,7 @@ pipeline {
 
 ## 📈 Output Examples
 
-### Generated Script Structure
+### **Generated Script Structure**
 ```python
 from locust import HttpUser, task, between
 import json
@@ -262,7 +342,7 @@ class TestRickAndMortyApiUser(HttpUser):
             self.logger.error(f'Error in API call: {str(e)}')
 ```
 
-### Test Results
+### **Test Results**
 ```json
 {
   "success": true,
@@ -281,16 +361,16 @@ class TestRickAndMortyApiUser(HttpUser):
 
 ## 🐛 Troubleshooting
 
-### Common Issues
+### **Common Issues**
 
 1. **OpenAI API Key Not Set**
    ```bash
-   export OPENAI_API_KEY="your-api-key"
+   python Agent/setup_env.py
    ```
 
 2. **Missing Dependencies**
    ```bash
-   pip install openai pyyaml
+   pip install -r requirements.txt
    ```
 
 3. **Configuration File Not Found**
@@ -304,7 +384,7 @@ class TestRickAndMortyApiUser(HttpUser):
    - Verify target host is accessible
    - Review error logs for specific issues
 
-### Debug Mode
+### **Debug Mode**
 
 Enable debug logging:
 ```python
