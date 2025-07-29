@@ -1,0 +1,262 @@
+# Locust Test Execution Agent Configuration
+# This file configures the AI agent for executing Locust performance tests
+
+agent:
+  name: "LocustTestExecutor"
+  version: "1.0.0"
+  description: "AI Agent for executing Locust performance tests and analyzing results"
+  
+  # OpenAI Configuration for Analysis
+  openai:
+    model: "gpt-4"
+    temperature: 0.2
+    max_tokens: 3000
+    system_prompt: |
+      You are an expert performance testing analyst specializing in Locust test results analysis.
+      Your task is to analyze test results and provide actionable insights and recommendations.
+
+# Jenkins Pipeline Configuration
+jenkins:
+  pipeline_name: "Locust-Test-Execution"
+  workspace: "${WORKSPACE}"
+  credentials:
+    git_username: "${GIT_USERNAME}"
+    git_password: "${GIT_PASSWORD}"
+    openai_api_key: "${OPENAI_API_KEY}"
+    
+  stages:
+    - name: "Checkout"
+      timeout: 10
+      
+    - name: "Setup Environment"
+      timeout: 5
+      
+    - name: "Execute Test"
+      timeout: 3600  # 1 hour max
+      
+    - name: "LLM Analysis"
+      timeout: 300
+      
+    - name: "Archive Results"
+      timeout: 60
+      
+    - name: "Commit to Git"
+      timeout: 120
+
+# Test Execution Settings
+execution:
+  default_host: "https://api.example.com"
+  default_users: 10
+  default_spawn_rate: 1
+  default_run_time: "5m"
+  default_log_level: "INFO"
+  
+  # Report Settings
+  reports:
+    html: true
+    csv: true
+    json: false
+    xml: false
+    
+  # Output Settings
+  output:
+    directory: "generated_reports"
+    timestamp_format: "%Y%m%d_%H%M%S"
+    include_logs: true
+    compress_reports: false
+    
+  # Analysis Settings
+  analysis:
+    enabled: true
+    output_directory: "generated_analysis"
+    include_metrics: true
+    generate_recommendations: true
+    performance_grading: true
+
+# Load Testing Profiles
+load_profiles:
+  smoke:
+    users: 5
+    spawn_rate: 1
+    run_time: "2m"
+    description: "Quick functionality check"
+    
+  load:
+    users: 20
+    spawn_rate: 2
+    run_time: "5m"
+    description: "Standard performance test"
+    
+  stress:
+    users: 50
+    spawn_rate: 5
+    run_time: "10m"
+    description: "Stress testing"
+    
+  spike:
+    users: 100
+    spawn_rate: 10
+    run_time: "5m"
+    description: "Spike testing"
+    
+  endurance:
+    users: 30
+    spawn_rate: 3
+    run_time: "30m"
+    description: "Long-term stability"
+
+# Performance Thresholds
+thresholds:
+  response_time:
+    excellent: 200
+    good: 500
+    acceptable: 1000
+    poor: 2000
+    failed: 5000
+    
+  requests_per_second:
+    excellent: 100
+    good: 50
+    acceptable: 20
+    poor: 10
+    failed: 5
+    
+  error_rate:
+    excellent: 0.01  # 1%
+    good: 0.05      # 5%
+    acceptable: 0.10 # 10%
+    poor: 0.20      # 20%
+    failed: 0.50    # 50%
+
+# Analysis Templates
+analysis_templates:
+  basic:
+    sections:
+      - "summary"
+      - "performance_metrics"
+      - "recommendations"
+      
+  comprehensive:
+    sections:
+      - "executive_summary"
+      - "test_configuration"
+      - "performance_metrics"
+      - "response_time_analysis"
+      - "throughput_analysis"
+      - "error_analysis"
+      - "bottleneck_identification"
+      - "recommendations"
+      - "next_steps"
+
+# Error Handling
+error_handling:
+  max_retries: 3
+  retry_delay: 30
+  fail_fast: false
+  continue_on_error: true
+  
+  # Error Categories
+  errors:
+    script_not_found:
+      severity: "critical"
+      action: "fail"
+      
+    execution_timeout:
+      severity: "warning"
+      action: "continue"
+      
+    analysis_failure:
+      severity: "warning"
+      action: "continue"
+      
+    git_operation_failure:
+      severity: "error"
+      action: "retry"
+
+# Monitoring and Alerting
+monitoring:
+  enabled: true
+  
+  metrics:
+    - "response_time_p95"
+    - "requests_per_second"
+    - "error_rate"
+    - "active_users"
+    - "cpu_usage"
+    - "memory_usage"
+    
+  alerts:
+    high_error_rate:
+      threshold: 0.10
+      action: "notify"
+      
+    slow_response_time:
+      threshold: 2000
+      action: "notify"
+      
+    low_throughput:
+      threshold: 10
+      action: "notify"
+
+# Git Integration
+git:
+  repository: "https://github.com/EdgardoZar/LOCUST_AIAgent.git"
+  branch: "dev"
+  commit_message_template: "feat(test): {test_name} - {timestamp} - Build #{build_number}"
+  
+  # Files to track
+  tracked_files:
+    - "generated_reports/**/*"
+    - "generated_analysis/**/*"
+    - "generated_scripts/**/*"
+    
+  # Files to ignore
+  ignored_files:
+    - "**/*.log"
+    - "**/__pycache__/**"
+    - "**/.DS_Store"
+
+# Environment Variables
+environment:
+  required:
+    - "GIT_USERNAME"
+    - "GIT_PASSWORD"
+    - "OPENAI_API_KEY"
+    
+  optional:
+    - "TEST_HOST"
+    - "TEST_USERS"
+    - "TEST_RUNTIME"
+    - "TEST_SCRIPT"
+
+# Security Settings
+security:
+  mask_sensitive_data: true
+  sensitive_patterns:
+    - "password"
+    - "token"
+    - "key"
+    - "secret"
+    
+  file_permissions:
+    reports: "644"
+    scripts: "644"
+    logs: "644"
+    
+  network:
+    allow_external_apis: true
+    timeout: 30
+    max_redirects: 5
+
+# Performance Optimization
+optimization:
+  parallel_execution: true
+  max_concurrent_tests: 3
+  resource_limits:
+    cpu_percent: 80
+    memory_mb: 1024
+    
+  cleanup:
+    auto_cleanup: true
+    keep_reports_days: 30
+    keep_logs_days: 7 

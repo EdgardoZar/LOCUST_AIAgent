@@ -1,0 +1,11 @@
+scenario_name,description,complexity,steps,load_profile,assertions,data_sources
+User Registration Flow,Complete user registration and profile setup,medium,"1. Register user, 2. Verify email, 3. Complete profile",ramp_up: 10 users over 30s,status_code: 201,users.csv
+E-commerce Checkout,Full e-commerce purchase flow,high,"1. Browse products, 2. Add to cart, 3. Checkout, 4. Payment",spike: 50 users for 2min,response_time < 2s,products.json
+API Health Check,Basic API endpoint health monitoring,low,"1. Health check, 2. Status endpoints",steady: 5 users,status_code: 200,
+User Authentication,Login and session management,medium,"1. Login, 2. Access protected resource, 3. Logout",ramp_up: 20 users over 1min,status_code: 200,credentials.csv
+Data Retrieval,Read operations performance test,low,"1. Get users, 2. Get products, 3. Get orders",steady: 15 users,response_time < 500ms,
+Rick and Morty API,Test Rick and Morty API endpoints,low,"1. Get characters, 2. Get specific character, 3. Search characters",steady: 10 users,status_code: 200,
+Order Processing,Complete order creation and processing,high,"1. Create order, 2. Process payment, 3. Update inventory",spike: 30 users for 5min,response_time < 3s,orders.csv
+File Upload Test,Test file upload functionality,medium,"1. Upload file, 2. Verify upload, 3. Download file",steady: 8 users,file_size_validation,
+Search Functionality,Test search and filtering,medium,"1. Search products, 2. Apply filters, 3. Sort results",steady: 12 users,response_time < 1s,search_terms.csv
+Performance Benchmark,Comprehensive performance testing,high,"1. Load test all endpoints, 2. Stress test, 3. Endurance test",various: 100 users max,all_metrics, 

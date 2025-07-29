@@ -1,0 +1,11 @@
+profile_name,description,users,spawn_rate,run_time,ramp_up,peak_load,steady_load,ramp_down,use_case
+Smoke Test,Basic functionality verification,5,1,2m,30s,5,5,30s,Quick validation
+Load Test,Standard performance testing,20,2,5m,1m,20,20,1m,Performance baseline
+Stress Test,Find breaking point,50,5,10m,2m,50,50,2m,Capacity planning
+Spike Test,Sudden traffic increase,100,10,5m,30s,100,100,30s,Traffic spikes
+Endurance Test,Long-term stability,30,3,30m,5m,30,30,5m,Memory leaks
+Ramp Up Test,Gradual load increase,40,1,15m,10m,40,40,5m,Scaling behavior
+Constant Load,Steady state testing,25,2,20m,2m,25,25,2m,Stability testing
+Burst Test,Short high-intensity bursts,75,15,3m,30s,75,75,30s,Peak handling
+Realistic Load,Production-like conditions,35,3,15m,3m,35,35,3m,Production simulation
+Development Test,Quick development testing,10,1,1m,30s,10,10,30s,Development workflow 

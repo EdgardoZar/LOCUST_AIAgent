@@ -1,0 +1,18 @@
+endpoint,method,description,base_url,headers,parameters,expected_status,response_time_ms,complexity
+/api/users,GET,Get all users,https://api.example.com,Content-Type: application/json,page: int, limit: int,200,150,low
+/api/users/{id},GET,Get user by ID,https://api.example.com,Content-Type: application/json,id: int,200,100,low
+/api/users,POST,Create new user,https://api.example.com,Content-Type: application/json,Authorization: Bearer {token},name: string, email: string,201,200,medium
+/api/users/{id},PUT,Update user,https://api.example.com,Content-Type: application/json,Authorization: Bearer {token},id: int, name: string,200,180,medium
+/api/users/{id},DELETE,Delete user,https://api.example.com,Authorization: Bearer {token},id: int,204,120,low
+/api/auth/login,POST,User login,https://api.example.com,Content-Type: application/json,username: string, password: string,200,300,medium
+/api/auth/logout,POST,User logout,https://api.example.com,Authorization: Bearer {token},,200,150,low
+/api/products,GET,Get all products,https://api.example.com,Content-Type: application/json,page: int, category: string,200,200,low
+/api/products/{id},GET,Get product by ID,https://api.example.com,Content-Type: application/json,id: int,200,150,low
+/api/products,POST,Create new product,https://api.example.com,Content-Type: application/json,Authorization: Bearer {token},name: string, price: float,201,250,medium
+/api/orders,GET,Get all orders,https://api.example.com,Authorization: Bearer {token},page: int, status: string,200,300,medium
+/api/orders,POST,Create new order,https://api.example.com,Content-Type: application/json,Authorization: Bearer {token},product_ids: array, total: float,201,400,high
+/api/orders/{id},GET,Get order by ID,https://api.example.com,Authorization: Bearer {token},id: int,200,200,medium
+/api/characters,GET,Get all characters,https://rickandmortyapi.com,Content-Type: application/json,page: int,200,180,low
+/api/characters/{id},GET,Get character by ID,https://rickandmortyapi.com,Content-Type: application/json,id: int,200,150,low
+/api/locations,GET,Get all locations,https://rickandmortyapi.com,Content-Type: application/json,page: int,200,200,low
+/api/episodes,GET,Get all episodes,https://rickandmortyapi.com,Content-Type: application/json,page: int,200,180,low 
