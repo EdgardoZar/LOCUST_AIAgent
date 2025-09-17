@@ -470,6 +470,11 @@ class LocustTestAgent:
         """Generate a class name from a scenario name."""
         class_name = "".join(c if c.isalnum() else "_" for c in scenario_name)
         class_name = "".join(word.capitalize() for word in class_name.split("_") if word)
+        
+        # Ensure the class name doesn't start with a number
+        if class_name and class_name[0].isdigit():
+            class_name = f"Test{class_name}"
+            
         return class_name
     
     def execute_test(self, script_path: str, config: TestConfig) -> TestResult:

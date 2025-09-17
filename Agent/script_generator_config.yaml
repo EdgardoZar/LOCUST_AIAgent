@@ -1,0 +1,179 @@
+# Locust Script Generator Agent Configuration
+# This file configures the AI agent for generating Locust performance test scripts
+
+agent:
+  name: "LocustScriptGenerator"
+  version: "1.0.0"
+  description: "AI Agent for generating Locust performance test scripts from natural language"
+  
+  # OpenAI Configuration
+  openai:
+    model: "gpt-4"
+    temperature: 0.3
+    max_tokens: 4000
+    system_prompt: |
+      You are an expert performance testing engineer specializing in Locust script generation.
+      Your task is to convert natural language requirements into comprehensive Locust test scripts.
+      Always follow best practices for performance testing and ensure scripts are production-ready.
+
+# Data Sources Configuration
+data_sources:
+  api_endpoints: "Agent/api_endpoints.csv"
+  test_scenarios: "Agent/test_scenarios.csv"
+  load_profiles: "Agent/load_profiles.csv"
+  assertion_templates: "Agent/assertion_templates.csv"
+  data_sources: "Agent/data_sources.csv"
+  
+# Script Generation Settings
+script_generation:
+  output_directory: "generated_scripts"
+  template_directory: "templates"
+  backup_existing: true
+  validate_syntax: true
+  include_comments: true
+  add_timestamp: true
+  
+# Default Script Settings
+defaults:
+  base_url: "https://api.example.com"
+  min_wait: 1000
+  max_wait: 5000
+  timeout: 30
+  retry_attempts: 3
+  
+# Load Testing Profiles
+load_profiles:
+  smoke_test:
+    users: 5
+    spawn_rate: 1
+    run_time: "2m"
+    description: "Basic functionality verification"
+    
+  load_test:
+    users: 20
+    spawn_rate: 2
+    run_time: "5m"
+    description: "Standard performance testing"
+    
+  stress_test:
+    users: 50
+    spawn_rate: 5
+    run_time: "10m"
+    description: "Find breaking point"
+    
+  spike_test:
+    users: 100
+    spawn_rate: 10
+    run_time: "5m"
+    description: "Sudden traffic increase"
+
+# Assertion Templates
+assertions:
+  basic:
+    - type: "status_code"
+      expected: 200
+    - type: "response_time"
+      max_time: 1000
+      
+  comprehensive:
+    - type: "status_code"
+      expected: 200
+    - type: "response_time"
+      max_time: 500
+    - type: "json_path"
+      path: "$.status"
+      expected: "success"
+    - type: "content_type"
+      expected: "application/json"
+
+# API Endpoint Categories
+endpoint_categories:
+  authentication:
+    - "/api/auth/login"
+    - "/api/auth/logout"
+    - "/api/auth/refresh"
+    
+  user_management:
+    - "/api/users"
+    - "/api/users/{id}"
+    - "/api/users/profile"
+    
+  ecommerce:
+    - "/api/products"
+    - "/api/orders"
+    - "/api/cart"
+    
+  rick_and_morty:
+    - "/api/characters"
+    - "/api/locations"
+    - "/api/episodes"
+
+# Natural Language Processing
+nlp:
+  keywords:
+    authentication: ["login", "auth", "token", "bearer", "session"]
+    performance: ["fast", "slow", "response time", "latency", "throughput"]
+    load: ["users", "concurrent", "spike", "ramp", "steady"]
+    validation: ["assert", "verify", "check", "validate", "expect"]
+    
+  patterns:
+    endpoint_request: r"test\s+(GET|POST|PUT|DELETE)\s+([^\s]+)"
+    load_profile: r"(\d+)\s+users?\s+(?:for\s+)?(\d+[mh]?)"
+    assertion: r"(?:verify|check|assert)\s+([^,]+)"
+
+# Output Formats
+output_formats:
+  json:
+    enabled: true
+    pretty_print: true
+    include_metadata: true
+    
+  csv:
+    enabled: true
+    include_headers: true
+    
+  html:
+    enabled: true
+    template: "default_report.html"
+    
+  markdown:
+    enabled: true
+    include_summary: true
+
+# Validation Rules
+validation:
+  required_fields:
+    - "name"
+    - "host"
+    - "users"
+    - "run_time"
+    
+  optional_fields:
+    - "description"
+    - "tags"
+    - "environment"
+    
+  naming_conventions:
+    script_name: "^[A-Za-z0-9_-]+$"
+    class_name: "^[A-Z][a-zA-Z0-9]*User$"
+    method_name: "^[a-z][a-zA-Z0-9_]*$"
+
+# Error Handling
+error_handling:
+  max_retries: 3
+  retry_delay: 5
+  log_level: "INFO"
+  save_error_logs: true
+  
+# Performance Settings
+performance:
+  max_concurrent_generations: 5
+  timeout_seconds: 300
+  memory_limit_mb: 512
+  
+# Security
+security:
+  sanitize_inputs: true
+  validate_urls: true
+  restrict_file_access: true
+  log_sensitive_data: false 

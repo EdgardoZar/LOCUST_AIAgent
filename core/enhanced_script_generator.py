@@ -706,4 +706,9 @@ class {class_name}(HttpUser):
         # Remove special characters and convert to CamelCase
         class_name = re.sub(r'[^a-zA-Z0-9\s]', '', scenario_name)
         class_name = ''.join(word.capitalize() for word in class_name.split())
+        
+        # Ensure the class name doesn't start with a number
+        if class_name and class_name[0].isdigit():
+            class_name = f"Test{class_name}"
+        
         return f"{class_name}User" 

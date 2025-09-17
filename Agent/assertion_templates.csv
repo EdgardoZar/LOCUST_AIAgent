@@ -1,0 +1,11 @@
+assertion_type,description,format,example,use_case
+status_code,Verify HTTP status code,status_code: {code},status_code: 200,Basic validation
+response_time,Check response time threshold,response_time < {time}ms,response_time < 500ms,Performance validation
+json_path,Validate JSON response structure,json_path: {path} = {value},json_path: $.status = "success",Data validation
+content_type,Verify response content type,content_type: {type},content_type: application/json,Format validation
+header_present,Check for required headers,header_present: {header},header_present: Authorization,Security validation
+body_size,Validate response body size,body_size > {size} bytes,body_size > 100 bytes,Content validation
+regex_match,Pattern matching in response,regex_match: {pattern},regex_match: "success",Text validation
+array_length,Check array response length,array_length: {path} > {count},array_length: $.items > 0,Data completeness
+field_exists,Verify field presence,field_exists: {path},field_exists: $.data.id,Structure validation
+custom_script,Custom validation logic,custom: {python_code},custom: len(response.json()) > 0,Complex validation 

@@ -1,0 +1,9 @@
+source_name,type,description,file_path,columns,json_path,usage,example
+users,CSV,User credentials and profiles,test_data/users.csv,"username,password,email,name,role",,authentication,testuser1,pass123,user1@test.com,John Doe,user
+products,JSON,Product catalog data,test_data/products.json,$.products[*],"id,name,price,category",e-commerce,{"id":"PROD001","name":"Laptop","price":999.99,"category":"electronics"}
+orders,CSV,Order information,test_data/orders.csv,"order_id,customer_id,total,status",,order_processing,ORD001,CUST123,299.99,pending
+credentials,CSV,Login credentials,test_data/credentials.csv,"username,password,role",,authentication,admin,admin123,administrator
+search_terms,CSV,Search keywords,test_data/search_terms.csv,"keyword,category,expected_results",,search_testing,laptop,electronics,10
+test_files,CSV,File upload data,test_data/files.csv,"filename,size,type,path",,file_upload,test.pdf,1024,application/pdf,uploads/test.pdf
+api_keys,CSV,API authentication,test_data/api_keys.csv,"key_name,key_value,permissions",,api_auth,test_key,abc123def456,read_write
+mock_data,JSON,Generic test data,test_data/mock_data.json,$.data[*],"id,name,value,type",general_testing,{"id":1,"name":"Test Item","value":"test","type":"string"} 
